@@ -2,9 +2,24 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import traceback
 import os
-from predict import predict_single
+import sys
 
-app = Flask(__name__)
+# Add the current directory to Python path to find predict.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+try:
+    from predict import predict_single
+except ImportError as e:
+    print(f"Error importing predict_single: {e}")
+    # Fallback for development
+    predict_single = lambda x: {"error": "Prediction module not loaded"}
+
+# Create Flask app with correct static and template folders
+app = Flask(__name__, 
+            static_folder='../static' if os.path.exists('../static') else None,
+            template_folder='../templates' if os.path.exists('../templates') else None)
 CORS(app)
 
 @app.route("/", methods=["GET"])
@@ -41,6 +56,6 @@ def predict():
         }), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_ENV") == "development"
+    app.run(host="0.0.0.0", port=port, debug=debug)
