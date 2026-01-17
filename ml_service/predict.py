@@ -2,6 +2,16 @@ import os
 import numpy as np
 import pandas as pd
 import joblib
+# Add this at the top of predict.py
+import os
+import sys
+
+# Ensure we can import from the same directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+# ... rest of your predict.py code
 
 # -------------------------------------------------------------------
 # BASE DIRECTORY
