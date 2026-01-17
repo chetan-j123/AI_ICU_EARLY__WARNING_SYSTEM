@@ -267,7 +267,7 @@ function resizeCanvases() {
 // ========== BACKEND CONNECTION ==========
 async function checkBackendConnection() {
   try {
-    const response = await fetch(`${state.backendUrl}/`, {
+    const response = await fetch(`${state.backendUrl}/health`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
