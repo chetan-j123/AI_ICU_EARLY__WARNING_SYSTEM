@@ -99,7 +99,7 @@ let state = {
   alertDismissed: false,
   activeTab: 'monitor',
   activePatientId: 'ICU-2024-0847',
-  backendUrl: 'http://localhost:5000',
+  backendUrl: '',
   vitals: {
     heartRate: 78,
     spO2: 97,
