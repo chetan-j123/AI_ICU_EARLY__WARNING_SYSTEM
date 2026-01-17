@@ -1,0 +1,3330 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICU Vital Sentinel Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: hsl(220, 20%, 4%);
+      --foreground: hsl(0, 0%, 95%);
+      --card: hsl(220, 18%, 8%);
+      --card-foreground: hsl(0, 0%, 95%);
+      --primary: hsl(180, 100%, 45%);
+      --secondary: hsl(220, 15%, 15%);
+      --muted: hsl(220, 15%, 12%);
+      --muted-foreground: hsl(220, 10%, 55%);
+      --border: hsl(220, 15%, 18%);
+      --panel-bg: hsl(220, 18%, 6%);
+      --panel-border: hsl(220, 15%, 15%);
+      --vital-stable: hsl(120, 100%, 45%);
+      --vital-warning: hsl(45, 100%, 50%);
+      --vital-critical: hsl(0, 85%, 50%);
+      --vital-oxygen: hsl(190, 100%, 50%);
+      --vital-pressure: hsl(280, 100%, 65%);
+      --vital-resp: hsl(55, 100%, 50%);
+      --vital-cvp: hsl(200, 100%, 60%);
+      --vital-pap: hsl(330, 100%, 65%);
+      --vital-icp: hsl(30, 100%, 55%);
+      --vital-co2: hsl(160, 100%, 50%);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Alert Banner */
+    .alert-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 8px 16px;
+      text-align: center;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .alert-critical {
+      background: linear-gradient(90deg, hsl(0, 85%, 40%) 0%, hsl(0, 85%, 50%) 50%, hsl(0, 85%, 40%) 100%);
+      animation: flash-critical 0.5s ease-in-out infinite;
+    }
+
+    .alert-warning {
+      background: linear-gradient(90deg, hsl(45, 100%, 35%) 0%, hsl(45, 100%, 45%) 50%, hsl(45, 100%, 35%) 100%);
+    }
+
+    @keyframes flash-critical {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.85; }
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1); }
+      15% { transform: scale(1.15); }
+      30% { transform: scale(1); }
+      45% { transform: scale(1.1); }
+    }
+
+    .animate-pulse { animation: pulse 1s ease-in-out infinite; }
+    .animate-heartbeat { animation: heartbeat 1s ease-in-out infinite; }
+
+    /* Header */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: rgba(18, 20, 26, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px;
+    }
+
+    .header-left, .header-right { 
+      display: flex; 
+      align-items: center; 
+      gap: 16px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.stable { background: var(--vital-stable); }
+    .status-dot.warning { background: var(--vital-warning); }
+    .status-dot.critical { background: var(--vital-critical); animation: pulse 1s infinite; }
+
+    .status-text { 
+      font-size: 14px; 
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .status-text.stable { color: var(--vital-stable); text-shadow: 0 0 10px var(--vital-stable); }
+    .status-text.warning { color: var(--vital-warning); text-shadow: 0 0 10px var(--vital-warning); }
+    .status-text.critical { color: var(--vital-critical); text-shadow: 0 0 10px var(--vital-critical); animation: pulse 1s infinite; }
+
+    .patient-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    .patient-id { 
+      font-size: 14px; 
+      font-weight: 600; 
+      color: var(--primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .patient-details { 
+      font-size: 14px; 
+      color: var(--muted-foreground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .live-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+
+    .live-btn.active {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--vital-critical);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .live-btn.paused {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-color: var(--border);
+    }
+
+    .live-dot {
+      position: relative;
+      width: 8px;
+      height: 8px;
+      flex-shrink: 0;
+    }
+
+    .live-dot::before {
+      content: '';
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--vital-critical);
+      animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+
+    .live-dot::after {
+      content: '';
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--vital-critical);
+    }
+
+    @keyframes ping {
+      75%, 100% { transform: scale(2); opacity: 0; }
+    }
+
+    /* Main Layout */
+    .main-container {
+      display: flex;
+      min-height: calc(100vh - 60px);
+    }
+
+    /* Mobile Toggle Button */
+    .mobile-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--foreground);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+      margin-right: 8px;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-title { font-size: 14px; font-weight: 600; color: var(--primary); }
+    .bed-count {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .patient-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .patient-card:hover { border-color: rgba(0, 204, 204, 0.5); }
+    .patient-card.active { border-color: var(--primary); box-shadow: 0 0 10px rgba(0, 204, 204, 0.2); }
+    .patient-card.critical { border-left: 3px solid var(--vital-critical); }
+    .patient-card.warning { border-left: 3px solid var(--vital-warning); }
+
+    .patient-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .patient-bed { font-weight: 600; font-size: 14px; }
+    .patient-risk-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .patient-risk-badge.critical { background: rgba(239, 68, 68, 0.2); color: var(--vital-critical); }
+    .patient-risk-badge.warning { background: rgba(251, 191, 36, 0.2); color: var(--vital-warning); }
+    .patient-risk-badge.stable { background: rgba(34, 197, 94, 0.2); color: var(--vital-stable); }
+
+    .patient-card-vitals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+
+    .mini-vital { display: flex; align-items: center; gap: 4px; }
+    .mini-vital-value { font-weight: 600; color: var(--foreground); }
+
+    /* Content Area */
+    .content {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      padding: 12px;
+      overflow-y: auto;
+      min-width: 0;
+    }
+
+    /* Panel Styles */
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .panel-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted-foreground);
+      margin-bottom: 12px;
+    }
+
+    /* Waveform Container */
+    .waveform-container {
+      position: relative;
+      background: linear-gradient(180deg, hsl(220, 18%, 6%) 0%, hsl(220, 20%, 4%) 100%);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .waveform-label {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      z-index: 10;
+    }
+
+    .waveform-value {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      z-index: 10;
+    }
+
+    canvas { 
+      display: block; 
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Vital Cards */
+    .vital-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px;
+      transition: all 0.3s;
+    }
+
+    .vital-card.critical {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .vital-card.warning {
+      border-color: rgba(251, 191, 36, 0.5);
+      background: rgba(251, 191, 36, 0.05);
+    }
+
+    .vital-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .vital-card-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted-foreground);
+    }
+
+    .vital-card-value {
+      font-size: 28px;
+      font-weight: bold;
+      line-height: 1;
+    }
+
+    .vital-card-value.stable { color: var(--vital-stable); text-shadow: 0 0 15px var(--vital-stable); }
+    .vital-card-value.warning { color: var(--vital-warning); text-shadow: 0 0 15px var(--vital-warning); }
+    .vital-card-value.critical { color: var(--vital-critical); text-shadow: 0 0 20px var(--vital-critical); animation: pulse 1s infinite; }
+
+    .vital-card-unit {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-left: 4px;
+    }
+
+    /* Risk Gauge */
+    .risk-gauge-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .risk-score {
+      font-size: 42px;
+      font-weight: bold;
+      text-align: center;
+      margin-top: -40px;
+    }
+
+    .risk-label {
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.2em;
+      margin-top: 4px;
+    }
+
+    .risk-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--muted-foreground);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* Vital Heatmap */
+    .heatmap-container { margin-top: 16px; }
+    
+    .heatmap-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .heatmap-label {
+      width: 50px;
+      font-size: 9px;
+      color: var(--muted-foreground);
+      flex-shrink: 0;
+    }
+
+    .heatmap-cells {
+      display: flex;
+      flex: 1;
+      gap: 2px;
+      overflow-x: auto;
+      padding: 2px 0;
+    }
+
+    .heatmap-cell {
+      min-width: 10px;
+      height: 16px;
+      border-radius: 2px;
+      transition: opacity 0.2s;
+      flex-shrink: 0;
+    }
+
+    /* Tabs */
+    .tabs-header {
+      display: flex;
+      gap: 4px;
+      background: var(--muted);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted-foreground);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .tab-btn.active {
+      background: var(--background);
+      color: var(--foreground);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Ventilator Panel */
+    .vent-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .vent-item {
+      background: var(--muted);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .vent-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .vent-value {
+      font-size: 20px;
+      font-weight: bold;
+      color: var(--primary);
+    }
+
+    .vent-unit {
+      font-size: 11px;
+      color: var(--muted-foreground);
+    }
+
+    /* Medication Panel */
+    .med-list { max-height: 300px; overflow-y: auto; }
+
+    .med-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px;
+      background: var(--muted);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .med-name { font-weight: 600; font-size: 13px; }
+    .med-dose { font-size: 11px; color: var(--muted-foreground); }
+
+    .med-status {
+      font-size: 9px;
+      padding: 3px 6px;
+      border-radius: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .med-status.active { background: rgba(34, 197, 94, 0.2); color: var(--vital-stable); }
+    .med-status.due { background: rgba(251, 191, 36, 0.2); color: var(--vital-warning); }
+    .med-status.overdue { background: rgba(239, 68, 68, 0.2); color: var(--vital-critical); }
+
+    /* Clinical Notes */
+    .note-item {
+      padding: 10px;
+      background: var(--muted);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .note-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .note-author { font-weight: 600; font-size: 11px; }
+    .note-time { font-size: 9px; color: var(--muted-foreground); }
+    .note-content { font-size: 12px; line-height: 1.5; }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .control-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--muted);
+      color: var(--foreground);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .control-btn:hover { border-color: var(--primary); }
+    .control-btn.active { background: rgba(0, 204, 204, 0.2); border-color: var(--primary); color: var(--primary); }
+
+    /* Blood Pressure Display */
+    .bp-display {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .bp-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--vital-pressure);
+      text-shadow: 0 0 15px var(--vital-pressure);
+    }
+
+    /* Trajectory Chart */
+    .trajectory-container { margin-top: 16px; }
+
+    /* Input Panel */
+    .input-panel {
+      background: var(--muted);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .input-item label {
+      display: block;
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin-bottom: 4px;
+    }
+
+    .input-item input, .input-item select {
+      width: 100%;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--background);
+      color: var(--foreground);
+      font-size: 12px;
+    }
+
+    .input-item input:focus, .input-item select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    /* Risk Trajectory SVG */
+    .trajectory-svg { overflow: visible; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--muted); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0, 204, 204, 0.5); }
+
+    /* ================= RESPONSIVE BREAKPOINTS ================= */
+    
+    /* Tablet: 1024px - 768px */
+    @media (max-width: 1024px) {
+      .content {
+        grid-template-columns: 1fr 1fr;
+      }
+      
+      .left-column {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      
+      .waveform-container {
+        height: 80px;
+        margin-bottom: 4px;
+      }
+      
+      .waveform-container:nth-child(-n+4) {
+        height: 100px;
+      }
+      
+      .center-column, .right-column {
+        grid-column: span 1;
+      }
+      
+      .sidebar {
+        width: 240px;
+      }
+      
+      .patient-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        border-left: none;
+        padding-left: 0;
+      }
+      
+      .header-left {
+        flex-wrap: wrap;
+      }
+      
+      .risk-gauge-container svg {
+        width: 240px;
+        height: 140px;
+      }
+    }
+    
+    /* Tablet Landscape: 900px - 768px */
+    @media (max-width: 900px) {
+      .header-right {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      
+      .content {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      
+      .left-column {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      
+      .waveform-container {
+        height: 70px;
+      }
+      
+      .waveform-container:nth-child(-n+4) {
+        height: 90px;
+      }
+      
+      .vital-card-value {
+        font-size: 24px;
+      }
+      
+      .vent-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      
+      .input-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    /* Mobile: 768px - 480px */
+    @media (max-width: 768px) {
+      .mobile-toggle {
+        display: block;
+      }
+      
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 60px;
+        bottom: 0;
+        z-index: 100;
+        box-shadow: 5px 0 20px rgba(0,0,0,0.3);
+      }
+      
+      .sidebar.active {
+        left: 0;
+      }
+      
+      .header {
+        flex-wrap: wrap;
+        padding: 8px 12px;
+      }
+      
+      .header-left, .header-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+      
+      .header-left {
+        order: 1;
+        margin-bottom: 8px;
+      }
+      
+      .header-right {
+        order: 2;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+      
+      .main-container {
+        min-height: calc(100vh - 100px);
+      }
+      
+      .content {
+        padding: 8px;
+      }
+      
+      .left-column {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      
+      .waveform-container {
+        height: 65px;
+      }
+      
+      .waveform-label {
+        font-size: 8px;
+        left: 6px;
+      }
+      
+      .waveform-value {
+        font-size: 14px;
+        right: 6px;
+      }
+      
+      .vital-card {
+        padding: 10px;
+      }
+      
+      .vital-card-value {
+        font-size: 22px;
+      }
+      
+      .controls {
+        justify-content: center;
+      }
+      
+      .control-btn {
+        flex: 1;
+        min-width: calc(33% - 12px);
+        justify-content: center;
+      }
+      
+      .tabs-header {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 3px;
+      }
+      
+      .tab-btn {
+        min-width: 70px;
+        padding: 6px;
+        font-size: 9px;
+      }
+      
+      .risk-gauge-container {
+        padding: 15px;
+      }
+      
+      .risk-gauge-container svg {
+        width: 200px;
+        height: 120px;
+      }
+      
+      .risk-score {
+        font-size: 36px;
+      }
+      
+      .risk-label {
+        font-size: 12px;
+      }
+      
+      .vent-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    
+    /* Small Mobile: 480px - 320px */
+    @media (max-width: 480px) {
+      .header {
+        padding: 6px 8px;
+      }
+      
+      .status-text {
+        font-size: 12px;
+      }
+      
+      .patient-id, .patient-details {
+        font-size: 12px;
+      }
+      
+      .live-btn {
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+      
+      .content {
+        padding: 6px;
+        gap: 8px;
+      }
+      
+      .left-column {
+        grid-template-columns: 1fr;
+      }
+      
+      .waveform-container {
+        height: 60px;
+      }
+      
+      .waveform-container:nth-child(-n+4) {
+        height: 80px;
+      }
+      
+      .vital-card-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      
+      .vital-card {
+        padding: 8px;
+      }
+      
+      .vital-card-value {
+        font-size: 20px;
+      }
+      
+      .panel {
+        padding: 12px;
+      }
+      
+      .panel-title {
+        font-size: 11px;
+        margin-bottom: 8px;
+      }
+      
+      .controls {
+        gap: 4px;
+      }
+      
+      .control-btn {
+        padding: 5px 8px;
+        font-size: 10px;
+        min-width: calc(50% - 8px);
+      }
+      
+      .tabs-header {
+        margin-bottom: 12px;
+      }
+      
+      .tab-btn {
+        min-width: 65px;
+        padding: 5px;
+        font-size: 8px;
+      }
+      
+      .risk-gauge-container svg {
+        width: 180px;
+        height: 100px;
+      }
+      
+      .risk-score {
+        font-size: 32px;
+      }
+      
+      .risk-label {
+        font-size: 11px;
+      }
+      
+      .risk-meta {
+        font-size: 10px;
+        gap: 8px;
+      }
+      
+      .heatmap-label {
+        width: 40px;
+        font-size: 8px;
+      }
+      
+      .heatmap-cell {
+        min-width: 8px;
+        height: 14px;
+      }
+      
+      .input-item label {
+        font-size: 8px;
+      }
+      
+      .input-item input, .input-item select {
+        padding: 5px;
+        font-size: 11px;
+      }
+      
+      .med-name {
+        font-size: 12px;
+      }
+      
+      .med-dose {
+        font-size: 10px;
+      }
+      
+      .note-content {
+        font-size: 11px;
+      }
+      
+      .vent-item {
+        padding: 8px;
+      }
+      
+      .vent-value {
+        font-size: 18px;
+      }
+    }
+    
+    /* Extra Small Mobile: < 320px */
+    @media (max-width: 320px) {
+      .header-left, .header-right {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      
+      .patient-info {
+        width: 100%;
+      }
+      
+      .status-indicator {
+        width: 100%;
+        justify-content: space-between;
+      }
+      
+      .live-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      
+      .waveform-label {
+        font-size: 7px;
+      }
+      
+      .waveform-value {
+        font-size: 12px;
+      }
+      
+      .vital-card-value {
+        font-size: 18px;
+      }
+      
+      .control-btn {
+        min-width: 100%;
+      }
+      
+      .risk-gauge-container svg {
+        width: 160px;
+        height: 90px;
+      }
+      
+      .risk-score {
+        font-size: 28px;
+      }
+      
+      .risk-label {
+        font-size: 10px;
+      }
+    }
+    
+    /* High Resolution Desktop */
+    @media (min-width: 1400px) {
+      .sidebar {
+        width: 320px;
+      }
+      
+      .content {
+        gap: 16px;
+        padding: 16px;
+      }
+      
+      .waveform-container {
+        height: 120px;
+      }
+      
+      .waveform-label {
+        font-size: 11px;
+      }
+      
+      .waveform-value {
+        font-size: 24px;
+      }
+      
+      .vital-card-value {
+        font-size: 36px;
+      }
+      
+      .risk-gauge-container svg {
+        width: 320px;
+        height: 180px;
+      }
+      
+      .risk-score {
+        font-size: 56px;
+      }
+      
+      .risk-label {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Alert Banner -->
+  <div id="alertBanner" class="alert-banner alert-critical" style="display: none;">
+    <span>⚠️</span>
+    <span id="alertText" class="font-mono">AI RISK PREDICTION: CRITICAL </span>
+    <span>🔔</span>
+    <button onclick="dismissAlert()" style="margin-left: 16px; background: rgba(255,255,255,0.2); border: none; padding: 4px 8px; border-radius: 4px; color: white; cursor: pointer;">✕</button>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <button class="mobile-toggle" id="mobileToggle">☰</button>
+    <div class="header-left">
+      <div class="status-indicator">
+        <div id="statusDot" class="status-dot stable"></div>
+        <span id="statusText" class="status-text stable font-mono">STABLE</span>
+      </div>
+      <div class="patient-info">
+        <span class="patient-id font-mono" id="patientId">ICU-2024-0847</span>
+        <span class="patient-details" id="patientDetails">67y M • Emergency</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px; border-left: 1px solid var(--border); padding-left: 12px;">
+        <span style="color: var(--primary);" class="font-mono">MICU</span>
+        <span style="margin: 0 4px; color: var(--muted-foreground);">|</span>
+        <span class="font-mono" id="patientBed">Bed 12</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+        <span>🕐</span>
+        <span style="color: var(--muted-foreground);">ICU Time:</span>
+        <span class="font-mono" id="icuTime">18h 32m</span>
+      </div>
+      <div class="font-mono" style="font-size: 13px; color: var(--muted-foreground);" id="currentTime">12:34:56</div>
+      
+      <!-- Connection Status Indicator -->
+      <div id="connectionStatus" style="display: flex; align-items: center; gap: 4px; font-size: 11px;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--vital-stable);" id="backendStatusDot"></div>
+        <span id="backendStatusText">ML Connected</span>
+      </div>
+      
+      <button id="liveBtn" class="live-btn active" onclick="toggleLive()">
+        <span>📊</span>
+        <span id="liveBtnText">LIVE</span>
+        <div class="live-dot" id="liveDot"></div>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">ICU BEDS</span>
+        <div class="bed-count">
+          <span style="color: var(--vital-critical);">● 2 Critical</span>
+          <span style="color: var(--vital-warning);">● 1 Borderline</span>
+        </div>
+      </div>
+      <div id="patientList"></div>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Left Column - Waveforms & Vitals -->
+      <div class="left-column">
+        <!-- ECG Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-stable);">ECG II</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-stable);" id="hrValue">78</span>
+          <canvas id="ecgCanvas"></canvas>
+        </div>
+
+        <!-- SpO2 Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-oxygen);">PLETH / SpO₂</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-oxygen);" id="spo2Value">97</span>
+          <canvas id="plethCanvas"></canvas>
+        </div>
+
+        <!-- Resp Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-resp);">RESP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-resp);" id="rrValue">16</span>
+          <canvas id="respCanvas"></canvas>
+        </div>
+
+        <!-- ABP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pressure);">ABP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pressure);" id="bpWaveValue">122</span>
+          <canvas id="abpCanvas"></canvas>
+        </div>
+
+        <!-- CVP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-cvp);">CVP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-cvp);" id="cvpValue">8</span>
+          <canvas id="cvpCanvas"></canvas>
+        </div>
+
+        <!-- PAP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pap);">PAP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pap);" id="papValue">25/10</span>
+          <canvas id="papCanvas"></canvas>
+        </div>
+
+        <!-- ICP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-icp);">ICP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-icp);" id="icpValue">12</span>
+          <canvas id="icpCanvas"></canvas>
+        </div>
+
+        <!-- CO₂ Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-co2);">CO₂</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-co2);" id="co2Value">38</span>
+          <canvas id="co2Canvas"></canvas>
+        </div>
+
+        <!-- Vital Cards Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+          <div class="vital-card" id="hrCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">❤️ Heart Rate</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="hrCardValue">78</span>
+              <span class="vital-card-unit">bpm</span>
+            </div>
+          </div>
+          <div class="vital-card" id="spo2Card">
+            <div class="vital-card-header">
+              <span class="vital-card-label">🫁 SpO₂</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="spo2CardValue">97</span>
+              <span class="vital-card-unit">%</span>
+            </div>
+          </div>
+          <div class="vital-card" id="rrCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">💨 Resp Rate</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="rrCardValue">16</span>
+              <span class="vital-card-unit">br/min</span>
+            </div>
+          </div>
+          <div class="vital-card" id="tempCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">🌡️ Temp</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="tempCardValue">37.1</span>
+              <span class="vital-card-unit">°C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blood Pressure Panel -->
+        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="color: var(--vital-pressure);">📈 NIBP</span>
+          </div>
+          <div class="bp-display">
+            <span class="bp-value font-mono" id="bpValue">122/78</span>
+            <span class="vital-card-unit">mmHg</span>
+          </div>
+          <div style="font-size: 12px; color: var(--muted-foreground); margin-top: 4px;">
+            MAP: <span class="font-mono" id="mapValue">93</span>
+          </div>
+        </div>
+
+        <!-- Audio Control -->
+        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+          <div class="controls">
+            <button class="control-btn" id="muteBtn" onclick="toggleMute()">
+              <span id="muteIcon">🔊</span>
+              <span id="muteText">Audio On</span>
+            </button>
+            <button class="control-btn" id="waveformAudioBtn" onclick="toggleWaveformAudio()">
+              <span>♥️</span>
+              <span>Waveform Sound</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Column - Risk & Monitoring -->
+      <div class="center-column">
+        <div class="controls">
+          <button class="control-btn" id="loadCriticalBtn" onclick="loadCriticalExample()">
+            <span>⚡</span>
+            <span>Load Critical</span>
+          </button>
+          <button class="control-btn" onclick="requestNotifications()">
+            <span>🔔</span>
+            <span>Notifications</span>
+          </button>
+          <button class="control-btn" onclick="testBackendConnection()">
+            <span>🔄</span>
+            <span>Test Backend</span>
+          </button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-header">
+          <button class="tab-btn active" onclick="switchTab('monitor')">Monitor</button>
+          <button class="tab-btn" onclick="switchTab('history')">History</button>
+          <button class="tab-btn" onclick="switchTab('meds')">Meds</button>
+          <button class="tab-btn" onclick="switchTab('vent')">Vent</button>
+          <button class="tab-btn" onclick="switchTab('notes')">Notes</button>
+        </div>
+
+        <!-- Monitor Tab -->
+        <div id="tab-monitor" class="tab-content active">
+          <div class="panel">
+            <div class="panel-title">📊 AI MORTALITY RISK</div>
+            <div class="risk-gauge-container">
+              <svg width="280" height="160" class="trajectory-svg">
+                <defs>
+                  <linearGradient id="stableGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(120, 100%, 35%)"/>
+                    <stop offset="100%" stop-color="hsl(120, 100%, 45%)"/>
+                  </linearGradient>
+                  <linearGradient id="warningGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(45, 100%, 40%)"/>
+                    <stop offset="100%" stop-color="hsl(45, 100%, 50%)"/>
+                  </linearGradient>
+                  <linearGradient id="criticalGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(0, 85%, 40%)"/>
+                    <stop offset="100%" stop-color="hsl(0, 85%, 55%)"/>
+                  </linearGradient>
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <!-- Background track -->
+                <path id="bgTrack" fill="none" stroke="hsl(220, 15%, 15%)" stroke-width="18" stroke-linecap="round"/>
+                <!-- Stable zone -->
+                <path id="stableZone" fill="none" stroke="url(#stableGrad)" stroke-width="16" opacity="0.8"/>
+                <!-- Warning zone -->
+                <path id="warningZone" fill="none" stroke="url(#warningGrad)" stroke-width="16" opacity="0.8"/>
+                <!-- Critical zone -->
+                <path id="criticalZone" fill="none" stroke="url(#criticalGrad)" stroke-width="16" stroke-linecap="round" opacity="0.8"/>
+                <!-- Needle -->
+                <g filter="url(#glow)">
+                  <line id="needle" stroke="hsl(120, 100%, 45%)" stroke-width="4" stroke-linecap="round"/>
+                  <circle id="needleCenter" r="8" fill="hsl(120, 100%, 45%)"/>
+                </g>
+                <!-- Labels -->
+                <text x="25" y="130" fill="hsl(120, 100%, 45%)" font-size="10" font-family="monospace">0</text>
+                <text x="55" y="45" fill="hsl(120, 100%, 45%)" font-size="9" font-family="monospace">STABLE</text>
+                <text x="115" y="25" fill="hsl(45, 100%, 50%)" font-size="9" font-family="monospace">RISK</text>
+                <text x="175" y="45" fill="hsl(0, 85%, 50%)" font-size="9" font-family="monospace">CRITICAL</text>
+                <text x="240" y="130" fill="hsl(0, 85%, 50%)" font-size="10" font-family="monospace">100</text>
+              </svg>
+              <div class="risk-score font-mono" id="riskScore" style="color: var(--vital-stable); text-shadow: 0 0 20px var(--vital-stable);">25%</div>
+              <div class="risk-label" id="riskLabel" style="color: var(--vital-stable);">STABLE</div>
+              <div class="risk-meta">
+                <span>Horizon: 1 hour</span>
+                <span>•</span>
+                <span>Confidence: <span id="riskConfidence">92.5</span>%</span>
+              </div>
+              <!-- ML Model Probabilities Display -->
+              <div id="mlProbabilities" style="margin-top: 12px; font-size: 10px; color: var(--muted-foreground); display: none;">
+                <div>Logistic: <span id="logisticProb">0.00</span></div>
+                <div>Random Forest: <span id="rfProb">0.00</span></div>
+                <div>Final Ensemble: <span id="finalProb">0.00</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Trajectory -->
+          <div class="panel" style="margin-top: 12px;">
+            <div class="panel-title">Risk Trajectory (Past → Future)</div>
+            <svg width="100%" height="100" id="trajectoryChart"></svg>
+          </div>
+
+          <!-- Vital Heatmap -->
+          <div class="panel" style="margin-top: 12px;">
+            <div class="panel-title">Vital History Heatmap (Last Hour)</div>
+            <div id="heatmapContainer" class="heatmap-container"></div>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="tab-history" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Vital Trends</div>
+            <canvas id="historyChart" height="200"></canvas>
+          </div>
+          <div class="input-panel">
+            <div class="panel-title">Manual Input (Send to ML Model)</div>
+            <div class="input-grid" id="manualInputs">
+              <!-- Basic Vitals -->
+              <div class="input-item">
+                <label>Heart Rate (bpm)</label>
+                <input type="number" id="inputHR" min="30" max="220" value="78">
+              </div>
+              <div class="input-item">
+                <label>SpO₂ (%)</label>
+                <input type="number" id="inputSpO2" min="50" max="100" value="97">
+              </div>
+              <div class="input-item">
+                <label>Systolic BP</label>
+                <input type="number" id="inputSBP" min="40" max="250" value="122">
+              </div>
+              <div class="input-item">
+                <label>Diastolic BP</label>
+                <input type="number" id="inputDBP" min="20" max="150" value="78">
+              </div>
+              <div class="input-item">
+                <label>Temperature (°C)</label>
+                <input type="number" id="inputTemp" min="32" max="43" step="0.1" value="37.1">
+              </div>
+              <div class="input-item">
+                <label>Resp Rate</label>
+                <input type="number" id="inputRR" min="4" max="60" value="16">
+              </div>
+              
+              <!-- Lab Values -->
+              <div class="input-item">
+                <label>Lactate</label>
+                <input type="number" id="inputLactate" min="0.5" max="20" step="0.1" value="1.2">
+              </div>
+              <div class="input-item">
+                <label>Creatinine</label>
+                <input type="number" id="inputCreatinine" min="0.2" max="10" step="0.1" value="0.9">
+              </div>
+              <div class="input-item">
+                <label>WBC Count (x1000)</label>
+                <input type="number" id="inputWBC" min="1" max="50" step="0.1" value="8.2">
+              </div>
+              <div class="input-item">
+                <label>Hemoglobin</label>
+                <input type="number" id="inputHGB" min="5" max="20" step="0.1" value="13.5">
+              </div>
+              <div class="input-item">
+                <label>CRP Level</label>
+                <input type="number" id="inputCRP" min="0" max="500" value="0">
+              </div>
+              
+              <!-- Oxygen Settings -->
+              <div class="input-item">
+                <label>Oxygen Flow (L/min)</label>
+                <input type="number" id="inputO2Flow" min="0" max="15" value="2">
+              </div>
+              <div class="input-item">
+                <label>Oxygen Device</label>
+                <select id="inputO2Device">
+                  <option value="none">None</option>
+                  <option value="room_air">Room Air</option>
+                  <option value="nasal_cannula" selected>Nasal Cannula</option>
+                  <option value="mask">Mask</option>
+                  <option value="non_rebreather">Non-Rebreather</option>
+                  <option value="bipap">BiPAP</option>
+                  <option value="cpap">CPAP</option>
+                  <option value="ventilator">Ventilator</option>
+                </select>
+              </div>
+              
+              <!-- Additional Parameters -->
+              <div class="input-item">
+                <label>Mobility Score</label>
+                <input type="number" id="inputMobility" min="0" max="10" value="0">
+              </div>
+              <div class="input-item">
+                <label>Nurse Alert</label>
+                <select id="inputNurseAlert">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+              </div>
+              <div class="input-item">
+                <label>Sepsis Risk Score</label>
+                <input type="number" id="inputSepsisRisk" min="0" max="20" value="0">
+              </div>
+              <div class="input-item">
+                <label>Age</label>
+                <input type="number" id="inputAge" min="0" max="120" value="67">
+              </div>
+              <div class="input-item">
+                <label>Comorbidity Index</label>
+                <input type="number" id="inputComorbidity" min="0" max="10" value="0">
+              </div>
+              <div class="input-item">
+                <label>Hours from Admission</label>
+                <input type="number" id="inputHours" min="0" max="720" value="2">
+              </div>
+              <div class="input-item">
+                <label>Gender</label>
+                <select id="inputGender">
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+              <div class="input-item">
+                <label>Admission Type</label>
+                <select id="inputAdmissionType">
+                  <option value="emergency" selected>Emergency</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="elective">Elective</option>
+                </select>
+              </div>
+            </div>
+            <button class="control-btn" style="margin-top: 12px; width: 100%;" onclick="applyManualInputs()">Apply Values & Get Prediction</button>
+          </div>
+        </div>
+
+        <!-- Meds Tab -->
+        <div id="tab-meds" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Active Medications</div>
+            <div class="med-list" id="medList"></div>
+          </div>
+        </div>
+
+        <!-- Vent Tab -->
+        <div id="tab-vent" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Ventilator Settings</div>
+            <div style="margin-bottom: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="ventEnabled" onchange="toggleVent()">
+                <span>Ventilator Enabled</span>
+              </label>
+            </div>
+            <div class="vent-grid" id="ventGrid">
+              <div class="vent-item">
+                <div class="vent-label">Mode</div>
+                <div class="vent-value font-mono">AC-VC</div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">PEEP</div>
+                <div class="vent-value font-mono">8<span class="vent-unit"> cmH₂O</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Tidal Volume</div>
+                <div class="vent-value font-mono">450<span class="vent-unit"> mL</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">FiO₂</div>
+                <div class="vent-value font-mono">40<span class="vent-unit">%</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Resp Rate</div>
+                <div class="vent-value font-mono">14<span class="vent-unit"> /min</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">I:E Ratio</div>
+                <div class="vent-value font-mono">1:2</div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Peak Pressure</div>
+                <div class="vent-value font-mono">28<span class="vent-unit"> cmH₂O</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Minute Vent</div>
+                <div class="vent-value font-mono">6.3<span class="vent-unit"> L/min</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes Tab -->
+        <div id="tab-notes" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Clinical Notes</div>
+            <div id="notesList"></div>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+              <textarea id="newNote" placeholder="Add a clinical note..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); min-height: 80px; resize: vertical;"></textarea>
+              <button class="control-btn" style="margin-top: 8px;" onclick="addNote()">Add Note</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column - Context -->
+      <div class="right-column">
+        <div class="panel">
+          <div class="panel-title">Clinical Context</div>
+          <div style="display: grid; gap: 12px;">
+            <div>
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase;">Oxygen Support</div>
+              <div class="font-mono" id="oxygenDevice">Nasal Cannula @ 2L/min</div>
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase;">FiO₂</div>
+              <div class="font-mono" id="fio2Value">28%</div>
+            </div>
+            <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 8px;">Clinical Scores</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <span style="color: var(--muted-foreground);">GCS:</span>
+                  <span class="font-mono" id="gcsValue">15</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">SOFA:</span>
+                  <span class="font-mono" id="sofaValue">2</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">APACHE II:</span>
+                  <span class="font-mono" id="apacheValue">12</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">Sepsis Risk:</span>
+                  <span class="font-mono" id="sepsisValue">1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 12px;">
+          <div class="panel-title">Lab Values</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+            <div>
+              <span style="color: var(--muted-foreground);">Lactate:</span>
+              <span class="font-mono" id="lactateValue">1.2</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Creatinine:</span>
+              <span class="font-mono" id="creatinineValue">0.9</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">WBC:</span>
+              <span class="font-mono" id="wbcValue">8.2</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Hemoglobin:</span>
+              <span class="font-mono" id="hgbValue">13.5</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Glucose:</span>
+              <span class="font-mono" id="glucoseValue">112</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">K+:</span>
+              <span class="font-mono" id="potassiumValue">4.1</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">CRP:</span>
+              <span class="font-mono" id="crpValue">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 12px;">
+          <div class="panel-title">AI Recommendations</div>
+          <div id="recommendations" style="font-size: 13px; line-height: 1.6;">
+            <div style="padding: 8px; background: rgba(34, 197, 94, 0.1); border-radius: 6px; margin-bottom: 8px;">
+              ✓ Vitals within normal limits
+            </div>
+            <div style="padding: 8px; background: var(--muted); border-radius: 6px;">
+              Continue current monitoring protocol
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ========== RESPONSIVE STATE MANAGEMENT ==========
+    let responsiveState = {
+      isMobile: false,
+      isTablet: false,
+      sidebarOpen: false
+    };
+
+    // ========== RESPONSIVE INITIALIZATION ==========
+    function initResponsive() {
+      checkViewport();
+      window.addEventListener('resize', handleResize);
+      document.getElementById('mobileToggle').addEventListener('click', toggleSidebar);
+      
+      // Close sidebar when clicking outside on mobile
+      document.addEventListener('click', (e) => {
+        if (responsiveState.isMobile && responsiveState.sidebarOpen) {
+          const sidebar = document.getElementById('sidebar');
+          const toggleBtn = document.getElementById('mobileToggle');
+          if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+            closeSidebar();
+          }
+        }
+      });
+    }
+
+    function checkViewport() {
+      const width = window.innerWidth;
+      responsiveState.isMobile = width <= 768;
+      responsiveState.isTablet = width > 768 && width <= 1024;
+      
+      // Update sidebar state
+      const sidebar = document.getElementById('sidebar');
+      if (responsiveState.isMobile && !responsiveState.sidebarOpen) {
+        sidebar.classList.remove('active');
+      } else if (!responsiveState.isMobile) {
+        sidebar.classList.add('active');
+      }
+      
+      // Adjust waveform heights based on screen size
+      adjustWaveformHeights();
+      adjustGaugeSize();
+    }
+
+    function handleResize() {
+      checkViewport();
+      resizeCanvases();
+    }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      responsiveState.sidebarOpen = !responsiveState.sidebarOpen;
+      sidebar.classList.toggle('active', responsiveState.sidebarOpen);
+    }
+
+    function closeSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      responsiveState.sidebarOpen = false;
+      sidebar.classList.remove('active');
+    }
+
+    function adjustWaveformHeights() {
+      const containers = document.querySelectorAll('.waveform-container');
+      const baseHeight = responsiveState.isMobile ? 60 : 
+                        responsiveState.isTablet ? 70 : 90;
+      
+      containers.forEach((container, index) => {
+        if (index < 4) { // First 4 waveforms get more height
+          container.style.height = `${baseHeight + 20}px`;
+        } else {
+          container.style.height = `${baseHeight}px`;
+        }
+      });
+    }
+
+    function adjustGaugeSize() {
+      const svg = document.querySelector('.risk-gauge-container svg');
+      if (!svg) return;
+      
+      if (responsiveState.isMobile) {
+        svg.setAttribute('width', '200');
+        svg.setAttribute('height', '120');
+      } else if (responsiveState.isTablet) {
+        svg.setAttribute('width', '240');
+        svg.setAttribute('height', '140');
+      } else {
+        svg.setAttribute('width', '280');
+        svg.setAttribute('height', '160');
+      }
+      
+      // Reinitialize gauge paths
+      initGauge();
+    }
+
+    // ========== ORIGINAL STATE (Preserved from your code) ==========
+    let state = {
+      isLive: true,
+      isMuted: false,
+      waveformAudioEnabled: false,
+      alertDismissed: false,
+      activeTab: 'monitor',
+      activePatientId: 'ICU-2024-0847',
+      backendUrl: 'http://localhost:5000',
+      vitals: {
+        heartRate: 78,
+        spO2: 97,
+        respiratoryRate: 16,
+        systolicBP: 122,
+        diastolicBP: 78,
+        temperature: 37.1,
+        cvp: 8,
+        papSystolic: 25,
+        papDiastolic: 10,
+        icp: 12,
+        co2: 38
+      },
+      labs: {
+        lactate: 1.2,
+        creatinine: 0.9,
+        wbc: 8.2,
+        hemoglobin: 13.5,
+        glucose: 112,
+        potassium: 4.1,
+        crp: 0
+      },
+      additionalParams: {
+        mobility_score: 0,
+        nurse_alert: 0,
+        sepsis_risk_score: 1,
+        age: 67,
+        comorbidity_index: 0,
+        hour_from_admission: 2,
+        gender: "M",
+        oxygen_device: "nasal_cannula",
+        admission_type: "emergency",
+        oxygen_flow: 2,
+        crp_level: 0
+      },
+      scores: {
+        gcs: 15,
+        sofa: 2,
+        apache: 12,
+        sepsis: 1
+      },
+      riskScore: 25,
+      riskLevel: 'STABLE',
+      vitalHistory: [],
+      trajectory: [],
+      mlProbabilities: {
+        logistic: 0,
+        rf: 0,
+        final: 0
+      },
+      waveformParams: {
+        ecg: {
+          amplitude: 1.0,
+          frequency: 1.0,
+          pWaveHeight: 0.3,
+          qrsHeight: 1.0,
+          tWaveHeight: 0.4
+        },
+        pleth: {
+          amplitude: 1.0,
+          pulseStrength: 1.0,
+          baseline: 0.5
+        },
+        resp: {
+          amplitude: 1.0,
+          frequency: 1.0,
+          inspirationRatio: 0.4
+        },
+        abp: {
+          amplitude: 1.0,
+          pulsePressureFactor: 1.0,
+          dicroticNotchDepth: 0.3
+        },
+        cvp: {
+          amplitude: 1.0,
+          aWaveHeight: 0.8,
+          vWaveHeight: 0.6,
+          xDescent: 0.4,
+          yDescent: 0.5
+        },
+        pap: {
+          amplitude: 1.0,
+          systolicPeak: 1.0,
+          diastolicTrough: 0.3
+        },
+        icp: {
+          amplitude: 1.0,
+          pulseAmplitude: 0.2,
+          baseline: 1.0
+        },
+        co2: {
+          amplitude: 1.0,
+          plateauHeight: 0.8,
+          upstrokeSteepness: 0.7
+        }
+      }
+    };
+
+    // Sample patients
+    const patients = [
+      { id: 'ICU-2024-0841', bed: 'Bed 1', age: 72, gender: 'M', hr: 88, spo2: 94, risk: 35, level: 'BORDERLINE' },
+      { id: 'ICU-2024-0842', bed: 'Bed 2', age: 45, gender: 'F', hr: 72, spo2: 98, risk: 15, level: 'STABLE' },
+      { id: 'ICU-2024-0843', bed: 'Bed 3', age: 81, gender: 'M', hr: 105, spo2: 89, risk: 65, level: 'CRITICAL' },
+      { id: 'ICU-2024-0844', bed: 'Bed 4', age: 58, gender: 'F', hr: 78, spo2: 96, risk: 20, level: 'STABLE' },
+      { id: 'ICU-2024-0845', bed: 'Bed 5', age: 67, gender: 'M', hr: 92, spo2: 92, risk: 40, level: 'BORDERLINE' },
+      { id: 'ICU-2024-0846', bed: 'Bed 6', age: 34, gender: 'F', hr: 145, spo2: 85, risk: 75, level: 'CRITICAL' },
+    ];
+
+    // Medications
+    const medications = [
+      { name: 'Norepinephrine', dose: '0.1 mcg/kg/min', route: 'IV', status: 'active' },
+      { name: 'Vancomycin', dose: '1g', route: 'IV Q12H', status: 'active' },
+      { name: 'Heparin', dose: '5000 units', route: 'SC Q8H', status: 'overdue' },
+      { name: 'Piperacillin-Tazobactam', dose: '4.5g', route: 'IV Q6H', status: 'due' },
+      { name: 'Fentanyl', dose: '50 mcg', route: 'IV PRN', status: 'active' },
+      { name: 'Propofol', dose: '20 mcg/kg/min', route: 'IV', status: 'active' },
+    ];
+
+    // Clinical notes
+    const notes = [
+      { author: 'Dr. Smith', role: 'MD', time: '2 hours ago', content: 'Patient hemodynamically stable. Continue current vasopressor support.' },
+      { author: 'RN Johnson', role: 'RN', time: '4 hours ago', content: 'Increased norepinephrine from 0.08 to 0.1 mcg/kg/min per protocol for MAP < 65.' },
+      { author: 'RT Williams', role: 'RT', time: '6 hours ago', content: 'Vent settings adjusted. FiO2 weaned from 50% to 40%. SpO2 maintained > 94%.' },
+    ];
+
+    // Audio context
+    let audioContext = null;
+    let heartbeatInterval = null;
+
+    // ========== CANVAS RESIZE MANAGEMENT ==========
+    const canvasReferences = {};
+
+    function resizeCanvases() {
+      const canvases = ['ecgCanvas', 'plethCanvas', 'respCanvas', 'abpCanvas', 'cvpCanvas', 'papCanvas', 'icpCanvas', 'co2Canvas'];
+      
+      canvases.forEach(id => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        
+        // Store reference for animation loop
+        canvasReferences[id] = {
+          canvas: canvas,
+          ctx: canvas.getContext('2d'),
+          container: container
+        };
+        
+        // Set display size
+        const displayWidth = container.clientWidth;
+        const displayHeight = container.clientHeight;
+        
+        // Check if canvas needs resizing
+        if (canvas.width !== displayWidth * dpr || canvas.height !== displayHeight * dpr) {
+          canvas.width = displayWidth * dpr;
+          canvas.height = displayHeight * dpr;
+          
+          const ctx = canvas.getContext('2d');
+          ctx.scale(dpr, dpr);
+        }
+      });
+    }
+
+    // ========== BACKEND CONNECTION ==========
+    async function checkBackendConnection() {
+      try {
+        const response = await fetch(`${state.backendUrl}/`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          document.getElementById('backendStatusDot').style.background = 'var(--vital-stable)';
+          document.getElementById('backendStatusText').textContent = 'ML Connected';
+          return true;
+        } else {
+          document.getElementById('backendStatusDot').style.background = 'var(--vital-warning)';
+          document.getElementById('backendStatusText').textContent = 'Backend Error';
+          return false;
+        }
+      } catch (error) {
+        document.getElementById('backendStatusDot').style.background = 'var(--vital-critical)';
+        document.getElementById('backendStatusText').textContent = 'No Connection';
+        console.error('Backend connection failed:', error);
+        return false;
+      }
+    }
+
+    async function testBackendConnection() {
+      const connected = await checkBackendConnection();
+      if (connected) {
+        alert('✅ Backend connection successful!');
+      } else {
+        alert('❌ Backend connection failed. Check if Flask is running on port 5000.');
+      }
+    }
+
+    // ========== ML PREDICTION ==========
+    async function getMLPrediction() {
+      const inputData = {
+        heart_rate: state.vitals.heartRate,
+        spo2_pct: state.vitals.spO2,
+        systolic_bp: state.vitals.systolicBP,
+        diastolic_bp: state.vitals.diastolicBP,
+        respiratory_rate: state.vitals.respiratoryRate,
+        temperature_c: state.vitals.temperature,
+        oxygen_flow: state.additionalParams.oxygen_flow,
+        mobility_score: state.additionalParams.mobility_score,
+        nurse_alert: state.additionalParams.nurse_alert,
+        wbc_count: state.labs.wbc * 1000,
+        lactate: state.labs.lactate,
+        creatinine: state.labs.creatinine,
+        crp_level: state.labs.crp,
+        hemoglobin: state.labs.hemoglobin,
+        sepsis_risk_score: state.additionalParams.sepsis_risk_score,
+        age: state.additionalParams.age,
+        comorbidity_index: state.additionalParams.comorbidity_index,
+        hour_from_admission: state.additionalParams.hour_from_admission,
+        gender: state.additionalParams.gender,
+        oxygen_device: state.additionalParams.oxygen_device,
+        admission_type: state.additionalParams.admission_type
+      };
+
+      try {
+        const response = await fetch(`${state.backendUrl}/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(inputData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.success) {
+          const prediction = result.prediction;
+          
+          state.mlProbabilities = {
+            logistic: prediction.logistic_prob,
+            rf: prediction.rf_prob,
+            final: prediction.final_prob
+          };
+          
+          state.riskScore = Math.min(100, Math.max(0, prediction.final_prob * 100));
+          
+          if (prediction.final_pred === 1 || prediction.final_prob >= 0.55) {
+            state.riskLevel = 'CRITICAL';
+          } else if (prediction.final_prob >= 0.3) {
+            state.riskLevel = 'BORDERLINE';
+          } else {
+            state.riskLevel = 'STABLE';
+          }
+          
+          updateProbabilityDisplay();
+          return true;
+        } else {
+          console.error('Prediction failed:', result.error);
+          fallbackRiskCalculation();
+          return false;
+        }
+      } catch (error) {
+        console.error('Error fetching prediction:', error);
+        fallbackRiskCalculation();
+        return false;
+      }
+    }
+
+    function fallbackRiskCalculation() {
+      const v = state.vitals;
+      const l = state.labs;
+      let score = 0;
+
+      if (v.heartRate < 50 || v.heartRate > 130) score += 25;
+      else if (v.heartRate < 60 || v.heartRate > 110) score += 10;
+
+      if (v.spO2 < 85) score += 35;
+      else if (v.spO2 < 90) score += 25;
+      else if (v.spO2 < 94) score += 15;
+
+      if (v.systolicBP < 80 || v.systolicBP > 200) score += 30;
+      else if (v.systolicBP < 90 || v.systolicBP > 180) score += 20;
+
+      if (v.respiratoryRate < 8 || v.respiratoryRate > 35) score += 25;
+      if (v.temperature < 35 || v.temperature > 40) score += 20;
+
+      if (l.lactate > 4) score += 25;
+      else if (l.lactate > 2) score += 15;
+      if (l.creatinine > 2) score += 20;
+
+      state.riskScore = Math.min(100, score);
+      state.riskLevel = score >= 55 ? 'CRITICAL' : score >= 30 ? 'BORDERLINE' : 'STABLE';
+    }
+
+    function updateProbabilityDisplay() {
+      const mlProbs = document.getElementById('mlProbabilities');
+      if (state.mlProbabilities.logistic > 0) {
+        mlProbs.style.display = 'block';
+        document.getElementById('logisticProb').textContent = state.mlProbabilities.logistic.toFixed(3);
+        document.getElementById('rfProb').textContent = state.mlProbabilities.rf.toFixed(3);
+        document.getElementById('finalProb').textContent = state.mlProbabilities.final.toFixed(3);
+      }
+    }
+
+    // ========== INITIALIZATION ==========
+    function init() {
+      // Initialize responsive features first
+      initResponsive();
+      checkViewport();
+      
+      // Initialize original features
+      initializeHistory();
+      calculateWaveformParameters();
+      renderPatientList();
+      renderMedications();
+      renderNotes();
+      initGauge();
+      renderTrajectory();
+      renderHeatmap();
+      
+      // Initialize canvases
+      resizeCanvases();
+      startWaveforms();
+      
+      checkBackendConnection().then(connected => {
+        if (connected) {
+          console.log('Backend connected successfully');
+          getMLPrediction();
+        } else {
+          console.warn('Using fallback risk calculation');
+          fallbackRiskCalculation();
+        }
+        startSimulation();
+      });
+      
+      updateClock();
+      setInterval(updateClock, 1000);
+    }
+
+    function initializeHistory() {
+      const now = Date.now();
+      for (let i = 60; i >= 0; i--) {
+        state.vitalHistory.push({
+          time: now - i * 60000,
+          hr: 75 + Math.random() * 15,
+          spo2: 95 + Math.random() * 4,
+          sbp: 115 + Math.random() * 20,
+          rr: 14 + Math.random() * 6,
+          temp: 36.8 + Math.random() * 0.8,
+          cvp: 6 + Math.random() * 4,
+          papSystolic: 22 + Math.random() * 6,
+          papDiastolic: 8 + Math.random() * 4,
+          icp: 10 + Math.random() * 6,
+          co2: 35 + Math.random() * 8
+        });
+      }
+      
+      const baseRisk = state.riskScore;
+      state.trajectory = Array.from({ length: 12 }, (_, i) => {
+        const trend = (Math.random() - 0.5) * 10;
+        return Math.max(0, Math.min(100, baseRisk + trend * (i / 12)));
+      });
+    }
+
+    // ========== DYNAMIC WAVEFORM PARAMETER CALCULATION ==========
+    function calculateWaveformParameters() {
+      const v = state.vitals;
+      const wp = state.waveformParams;
+
+      // ECG Parameters based on heart rate and rhythm
+      const hr = v.heartRate;
+      wp.ecg.frequency = hr / 60;
+      wp.ecg.pWaveHeight = 0.3 * (hr > 100 ? 0.7 : hr < 50 ? 1.3 : 1.0);
+      wp.ecg.qrsHeight = 1.0 * (hr > 120 ? 0.8 : hr < 40 ? 1.2 : 1.0);
+      wp.ecg.tWaveHeight = 0.4 * (v.temperature > 38.5 ? 1.3 : 1.0);
+
+      // Pleth Parameters based on SpO2 and perfusion
+      wp.pleth.pulseStrength = v.spO2 / 100;
+      wp.pleth.amplitude = 0.5 + (v.spO2 / 100) * 0.5;
+      wp.pleth.baseline = 0.3 + (v.spO2 / 100) * 0.4;
+
+      // Resp Parameters based on respiratory rate and pattern
+      wp.resp.frequency = v.respiratoryRate / 12;
+      wp.resp.amplitude = 0.5 + (v.respiratoryRate / 30) * 0.5;
+      wp.resp.inspirationRatio = 0.4 * (v.respiratoryRate > 25 ? 0.7 : v.respiratoryRate < 10 ? 1.3 : 1.0);
+
+      // ABP Parameters based on blood pressure
+      const pulsePressure = v.systolicBP - v.diastolicBP;
+      wp.abp.pulsePressureFactor = pulsePressure / 40;
+      wp.abp.amplitude = (v.systolicBP / 120) * 0.8 + 0.2;
+      wp.abp.dicroticNotchDepth = 0.3 * (pulsePressure > 60 ? 0.5 : pulsePressure < 20 ? 1.5 : 1.0);
+
+      // CVP Parameters
+      wp.cvp.aWaveHeight = 0.8 * (v.cvp > 12 ? 1.2 : v.cvp < 4 ? 0.8 : 1.0);
+      wp.cvp.vWaveHeight = 0.6 * (v.cvp > 12 ? 1.3 : v.cvp < 4 ? 0.7 : 1.0);
+      wp.cvp.xDescent = 0.4 * (v.heartRate > 100 ? 1.2 : 1.0);
+      wp.cvp.yDescent = 0.5 * (v.cvp > 10 ? 0.8 : 1.0);
+
+      // PAP Parameters
+      wp.pap.systolicPeak = v.papSystolic / 25;
+      wp.pap.diastolicTrough = v.papDiastolic / 10;
+      wp.pap.amplitude = (v.papSystolic - v.papDiastolic) / 15;
+
+      // ICP Parameters
+      wp.icp.baseline = v.icp / 15;
+      wp.icp.pulseAmplitude = 0.2 * (v.icp > 20 ? 1.5 : v.icp < 5 ? 0.5 : 1.0);
+      wp.icp.amplitude = 0.5 + (v.icp / 30) * 0.5;
+
+      // CO2 Parameters
+      wp.co2.plateauHeight = v.co2 / 40;
+      wp.co2.upstrokeSteepness = 0.7 * (v.respiratoryRate > 20 ? 1.3 : v.respiratoryRate < 10 ? 0.7 : 1.0);
+      wp.co2.amplitude = 0.6 + (v.co2 / 60) * 0.4;
+    }
+
+    // ========== WAVEFORMS ==========
+    const waveformOffsets = { 
+      ecg: 0, 
+      pleth: 0, 
+      resp: 0, 
+      abp: 0,
+      cvp: 0,
+      pap: 0,
+      icp: 0,
+      co2: 0
+    };
+
+    function startWaveforms() {
+      function drawWaveforms() {
+        calculateWaveformParameters();
+        
+        // Get current canvas dimensions from references
+        for (const [id, ref] of Object.entries(canvasReferences)) {
+          if (!ref || !ref.canvas || !ref.ctx) continue;
+          
+          const canvas = ref.canvas;
+          const ctx = ref.ctx;
+          const container = ref.container;
+          
+          const w = container.clientWidth;
+          const h = container.clientHeight;
+          
+          // Clear canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Scale for high DPI
+          const dpr = window.devicePixelRatio || 1;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          
+          // Draw based on waveform type
+          switch(id) {
+            case 'ecgCanvas':
+              drawECG(ctx, w, h, waveformOffsets.ecg);
+              waveformOffsets.ecg += 2 * state.waveformParams.ecg.frequency;
+              break;
+            case 'plethCanvas':
+              drawPleth(ctx, w, h, waveformOffsets.pleth);
+              waveformOffsets.pleth += 2 * (state.vitals.heartRate / 60);
+              break;
+            case 'respCanvas':
+              drawResp(ctx, w, h, waveformOffsets.resp);
+              waveformOffsets.resp += 1 * state.waveformParams.resp.frequency;
+              break;
+            case 'abpCanvas':
+              drawABP(ctx, w, h, waveformOffsets.abp);
+              waveformOffsets.abp += 2 * (state.vitals.heartRate / 60);
+              break;
+            case 'cvpCanvas':
+              drawCVP(ctx, w, h, waveformOffsets.cvp);
+              waveformOffsets.cvp += 1;
+              break;
+            case 'papCanvas':
+              drawPAP(ctx, w, h, waveformOffsets.pap);
+              waveformOffsets.pap += 1.5;
+              break;
+            case 'icpCanvas':
+              drawICP(ctx, w, h, waveformOffsets.icp);
+              waveformOffsets.icp += 0.8;
+              break;
+            case 'co2Canvas':
+              drawCO2(ctx, w, h, waveformOffsets.co2);
+              waveformOffsets.co2 += 1.2;
+              break;
+          }
+        }
+        
+        requestAnimationFrame(drawWaveforms);
+      }
+      
+      drawWaveforms();
+    }
+
+    function drawECG(ctx, w, h, offset) {
+      const midY = h / 2;
+      const amplitude = h * 0.35 * state.waveformParams.ecg.amplitude;
+      const wp = state.waveformParams.ecg;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(120, 100%, 45%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(120, 100%, 45%)';
+      ctx.shadowBlur = 8;
+
+      const cycleLength = 100 / wp.frequency;
+      
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % cycleLength;
+        const norm = cycle / cycleLength;
+        let y = midY;
+        
+        if (norm < 0.05) y = midY - amplitude * 0.1 * wp.pWaveHeight;
+        else if (norm < 0.1) y = midY - amplitude * 0.15 * wp.pWaveHeight;
+        else if (norm < 0.15) y = midY + amplitude * 0.1;
+        else if (norm < 0.2) y = midY - amplitude * 0.9 * wp.qrsHeight;
+        else if (norm < 0.25) y = midY + amplitude * 0.3 * wp.qrsHeight;
+        else if (norm < 0.35) y = midY - amplitude * 0.2 * wp.tWaveHeight;
+        else if (norm < 0.5) y = midY + amplitude * 0.1 * wp.tWaveHeight;
+        else y = midY - amplitude * 0.1;
+
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Sweep line
+      const sweepX = offset % w;
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.moveTo(sweepX, 0);
+      ctx.lineTo(sweepX, h);
+      ctx.stroke();
+    }
+
+    function drawPleth(ctx, w, h, offset) {
+      const midY = h / 2;
+      const amplitude = h * 0.35 * state.waveformParams.pleth.amplitude;
+      const wp = state.waveformParams.pleth;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(190, 100%, 50%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(190, 100%, 50%)';
+      ctx.shadowBlur = 8;
+
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % 80;
+        const norm = cycle / 80;
+        let y;
+        
+        if (norm < 0.15) {
+          y = midY - amplitude * (wp.baseline + (0.8 * wp.pulseStrength) * Math.sin(norm * Math.PI / 0.15));
+        } else if (norm < 0.3) {
+          y = midY - amplitude * (1 - 0.3 * (norm - 0.15) / 0.15) * wp.pulseStrength;
+        } else if (norm < 0.5) {
+          y = midY - amplitude * (0.7 + 0.15 * wp.pulseStrength * Math.sin((norm - 0.3) * Math.PI / 0.2));
+        } else {
+          y = midY - amplitude * (0.85 - 0.65 * wp.pulseStrength * (norm - 0.5) / 0.5);
+        }
+
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawResp(ctx, w, h, offset) {
+      const midY = h / 2;
+      const amplitude = h * 0.3 * state.waveformParams.resp.amplitude;
+      const wp = state.waveformParams.resp;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(55, 100%, 50%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(55, 100%, 50%)';
+      ctx.shadowBlur = 8;
+
+      const cycleLength = 120 / wp.frequency;
+      
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % cycleLength;
+        const norm = cycle / cycleLength;
+        
+        let y;
+        if (norm < wp.inspirationRatio) {
+          y = midY - amplitude * Math.sin((norm / wp.inspirationRatio) * Math.PI / 2);
+        } else {
+          y = midY - amplitude * Math.cos(((norm - wp.inspirationRatio) / (1 - wp.inspirationRatio)) * Math.PI / 2);
+        }
+        
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawABP(ctx, w, h, offset) {
+      const wp = state.waveformParams.abp;
+      const v = state.vitals;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(280, 100%, 65%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(280, 100%, 65%)';
+      ctx.shadowBlur = 8;
+
+      const cycleLength = 60 * (60 / v.heartRate);
+      
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % cycleLength;
+        const norm = cycle / cycleLength;
+        let bp;
+        
+        if (norm < 0.2) {
+          bp = v.diastolicBP + (v.systolicBP - v.diastolicBP) * Math.sin(norm * Math.PI / 0.4) * wp.pulsePressureFactor;
+        } else if (norm < 0.25) {
+          bp = v.systolicBP - (v.systolicBP - v.diastolicBP) * 0.3 * wp.dicroticNotchDepth;
+        } else {
+          bp = v.systolicBP - (v.systolicBP - v.diastolicBP) * (norm - 0.2) / 0.8;
+        }
+        
+        const y = h - 5 - ((bp - 40) / 160) * (h - 10) * wp.amplitude;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawCVP(ctx, w, h, offset) {
+      const wp = state.waveformParams.cvp;
+      const v = state.vitals;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(200, 100%, 60%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(200, 100%, 60%)';
+      ctx.shadowBlur = 8;
+
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % 80;
+        const norm = cycle / 80;
+        let pressure;
+        
+        if (norm < 0.2) {
+          pressure = v.cvp + 3 * wp.aWaveHeight * Math.sin(norm * Math.PI * 5);
+        } else if (norm < 0.3) {
+          pressure = v.cvp - 2 * wp.xDescent * ((norm - 0.2) / 0.1);
+        } else if (norm < 0.4) {
+          pressure = v.cvp + 2 * wp.vWaveHeight * Math.sin((norm - 0.3) * Math.PI * 5);
+        } else if (norm < 0.6) {
+          pressure = v.cvp - 1.5 * wp.yDescent * ((norm - 0.4) / 0.2);
+        } else {
+          pressure = v.cvp + 0.5 * Math.sin((norm - 0.6) * Math.PI * 3);
+        }
+        
+        const y = h - 5 - ((pressure - 0) / 30) * (h - 10) * wp.amplitude;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawPAP(ctx, w, h, offset) {
+      const wp = state.waveformParams.pap;
+      const v = state.vitals;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(330, 100%, 65%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(330, 100%, 65%)';
+      ctx.shadowBlur = 8;
+
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % 70;
+        const norm = cycle / 70;
+        let pressure;
+        
+        if (norm < 0.25) {
+          pressure = v.papDiastolic + (v.papSystolic - v.papDiastolic) * 
+                    Math.sin(norm * Math.PI / 0.5) * wp.systolicPeak;
+        } else {
+          pressure = v.papSystolic - (v.papSystolic - v.papDiastolic) * 
+                    (norm - 0.25) / 0.75 * wp.diastolicTrough;
+        }
+        
+        const y = h - 5 - ((pressure - 0) / 60) * (h - 10) * wp.amplitude;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawICP(ctx, w, h, offset) {
+      const wp = state.waveformParams.icp;
+      const v = state.vitals;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(30, 100%, 55%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(30, 100%, 55%)';
+      ctx.shadowBlur = 8;
+
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % 90;
+        const norm = cycle / 90;
+        let pressure;
+        
+        const baseline = v.icp * wp.baseline;
+        const pulseWave = wp.pulseAmplitude * Math.sin(norm * Math.PI * 6);
+        
+        if (norm < 0.4) {
+          pressure = baseline + 2 * pulseWave;
+        } else if (norm < 0.7) {
+          pressure = baseline - 1 * pulseWave;
+        } else {
+          pressure = baseline + 0.5 * pulseWave;
+        }
+        
+        const y = h - 5 - ((pressure - 0) / 40) * (h - 10) * wp.amplitude;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawCO2(ctx, w, h, offset) {
+      const wp = state.waveformParams.co2;
+      const v = state.vitals;
+
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+      drawGrid(ctx, w, h);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'hsl(160, 100%, 50%)';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'hsl(160, 100%, 50%)';
+      ctx.shadowBlur = 8;
+
+      for (let x = 0; x < w; x++) {
+        const cycle = (x + offset) % 75;
+        const norm = cycle / 75;
+        let value;
+        
+        if (norm < 0.2) {
+          value = v.co2 * (norm / 0.2) * wp.upstrokeSteepness;
+        } else if (norm < 0.4) {
+          value = v.co2 * wp.plateauHeight;
+        } else if (norm < 0.6) {
+          value = v.co2 * wp.plateauHeight * (1 - (norm - 0.4) / 0.2);
+        } else if (norm < 0.8) {
+          value = 0;
+        } else {
+          value = 0;
+        }
+        
+        const y = h - 5 - ((value - 0) / 80) * (h - 10) * wp.amplitude;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function drawGrid(ctx, w, h) {
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.1)';
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x < w; x += 20) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y < h; y += 20) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+    }
+
+    // ========== SIMULATION ==========
+    function startSimulation() {
+      setInterval(() => {
+        if (!state.isLive) return;
+        updateVitals();
+        calculateWaveformParameters();
+        getMLPrediction();
+        updateUI();
+        checkAlerts();
+      }, 3000);
+    }
+
+    function updateVitals() {
+      const v = state.vitals;
+      v.heartRate = clamp(v.heartRate + (Math.random() - 0.5) * 4, 40, 180);
+      v.spO2 = clamp(v.spO2 + (Math.random() - 0.5) * 1.5, 70, 100);
+      v.respiratoryRate = clamp(v.respiratoryRate + (Math.random() - 0.5) * 2, 6, 40);
+      v.systolicBP = clamp(v.systolicBP + (Math.random() - 0.5) * 6, 60, 220);
+      v.diastolicBP = clamp(v.diastolicBP + (Math.random() - 0.5) * 4, 40, 140);
+      v.temperature = clamp(v.temperature + (Math.random() - 0.5) * 0.1, 34, 42);
+      
+      v.cvp = clamp(v.cvp + (Math.random() - 0.5) * 0.5, 2, 20);
+      v.papSystolic = clamp(v.papSystolic + (Math.random() - 0.5) * 2, 15, 50);
+      v.papDiastolic = clamp(v.papDiastolic + (Math.random() - 0.5) * 1, 5, 25);
+      v.icp = clamp(v.icp + (Math.random() - 0.5) * 0.3, 5, 30);
+      v.co2 = clamp(v.co2 + (Math.random() - 0.5) * 2, 20, 60);
+
+      if (v.heartRate > 120) v.spO2 = Math.max(85, v.spO2 - Math.random() * 2);
+      if (v.temperature > 38.5) v.heartRate = Math.min(160, v.heartRate + Math.random() * 5);
+      if (v.icp > 20) v.heartRate = Math.max(50, v.heartRate - Math.random() * 5);
+
+      state.vitalHistory.push({
+        time: Date.now(),
+        hr: v.heartRate,
+        spo2: v.spO2,
+        sbp: v.systolicBP,
+        rr: v.respiratoryRate,
+        temp: v.temperature,
+        cvp: v.cvp,
+        papSystolic: v.papSystolic,
+        papDiastolic: v.papDiastolic,
+        icp: v.icp,
+        co2: v.co2
+      });
+      if (state.vitalHistory.length > 120) state.vitalHistory.shift();
+    }
+
+    function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+    // ========== UI UPDATE ==========
+    function updateUI() {
+      const v = state.vitals;
+      const map = Math.round((v.systolicBP + 2 * v.diastolicBP) / 3);
+
+      document.getElementById('hrValue').textContent = Math.round(v.heartRate);
+      document.getElementById('spo2Value').textContent = Math.round(v.spO2);
+      document.getElementById('rrValue').textContent = Math.round(v.respiratoryRate);
+      document.getElementById('bpWaveValue').textContent = Math.round(v.systolicBP);
+      
+      document.getElementById('cvpValue').textContent = v.cvp.toFixed(1);
+      document.getElementById('papValue').textContent = `${Math.round(v.papSystolic)}/${Math.round(v.papDiastolic)}`;
+      document.getElementById('icpValue').textContent = Math.round(v.icp);
+      document.getElementById('co2Value').textContent = Math.round(v.co2);
+      
+      document.getElementById('hrCardValue').textContent = Math.round(v.heartRate);
+      document.getElementById('spo2CardValue').textContent = Math.round(v.spO2);
+      document.getElementById('rrCardValue').textContent = Math.round(v.respiratoryRate);
+      document.getElementById('tempCardValue').textContent = v.temperature.toFixed(1);
+      
+      document.getElementById('bpValue').textContent = `${Math.round(v.systolicBP)}/${Math.round(v.diastolicBP)}`;
+      document.getElementById('mapValue').textContent = map;
+
+      updateVitalCardStatus('hrCard', 'hrCardValue', v.heartRate, 60, 100, 45, 140);
+      updateVitalCardStatus('spo2Card', 'spo2CardValue', v.spO2, 94, 100, 88, 101);
+      updateVitalCardStatus('rrCard', 'rrCardValue', v.respiratoryRate, 12, 20, 8, 35);
+      updateVitalCardStatus('tempCard', 'tempCardValue', v.temperature, 36.1, 37.5, 35, 39.5);
+
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      statusDot.className = 'status-dot ' + state.riskLevel.toLowerCase();
+      statusText.className = 'status-text ' + state.riskLevel.toLowerCase() + ' font-mono';
+      statusText.textContent = state.riskLevel;
+
+      updateGauge();
+      renderTrajectory();
+      renderHeatmap();
+      updateRecommendations();
+    }
+
+    function updateVitalCardStatus(cardId, valueId, value, low, high, critLow, critHigh) {
+      const card = document.getElementById(cardId);
+      const valueEl = document.getElementById(valueId);
+      let status = 'stable';
+      
+      if (value < critLow || value > critHigh) status = 'critical';
+      else if (value < low || value > high) status = 'warning';
+
+      card.className = 'vital-card ' + status;
+      valueEl.className = 'vital-card-value ' + status + ' font-mono';
+    }
+
+    // ========== GAUGE ==========
+    function initGauge() {
+      const svg = document.querySelector('.risk-gauge-container svg');
+      if (!svg) return;
+      
+      const width = parseInt(svg.getAttribute('width'));
+      const height = parseInt(svg.getAttribute('height'));
+      
+      // Adjust gauge size based on responsive state
+      const cx = width / 2;
+      const cy = height - 40;
+      const r = Math.min(cx, cy) - 10;
+      
+      function arc(start, end) {
+        const s = { x: cx + r * Math.cos(start * Math.PI / 180), y: cy + r * Math.sin(start * Math.PI / 180) };
+        const e = { x: cx + r * Math.cos(end * Math.PI / 180), y: cy + r * Math.sin(end * Math.PI / 180) };
+        return `M ${s.x} ${s.y} A ${r} ${r} 0 0 1 ${e.x} ${e.y}`;
+      }
+
+      document.getElementById('bgTrack').setAttribute('d', arc(-180, 0));
+      document.getElementById('stableZone').setAttribute('d', arc(-180, -117));
+      document.getElementById('warningZone').setAttribute('d', arc(-117, -72));
+      document.getElementById('criticalZone').setAttribute('d', arc(-72, 0));
+      
+      // Position needle center
+      document.getElementById('needleCenter').setAttribute('cx', cx);
+      document.getElementById('needleCenter').setAttribute('cy', cy);
+      
+      // Adjust label positions based on size
+      const labels = svg.querySelectorAll('text');
+      labels[0].setAttribute('x', cx - r + 10);
+      labels[0].setAttribute('y', cy + r - 10);
+      labels[3].setAttribute('x', cx + r - 10);
+      labels[3].setAttribute('y', cy + r - 10);
+    }
+
+    function updateGauge() {
+      const svg = document.querySelector('.risk-gauge-container svg');
+      if (!svg) return;
+      
+      const width = parseInt(svg.getAttribute('width'));
+      const height = parseInt(svg.getAttribute('height'));
+      
+      const cx = width / 2;
+      const cy = height - 40;
+      const r = Math.min(cx, cy) - 40;
+      
+      const angle = (state.riskScore / 100) * 180 - 180;
+      const rad = angle * Math.PI / 180;
+      
+      const needle = document.getElementById('needle');
+      needle.setAttribute('x1', cx);
+      needle.setAttribute('y1', cy);
+      needle.setAttribute('x2', cx + r * Math.cos(rad));
+      needle.setAttribute('y2', cy + r * Math.sin(rad));
+
+      const color = state.riskLevel === 'CRITICAL' ? 'hsl(0, 85%, 50%)' : 
+                    state.riskLevel === 'BORDERLINE' ? 'hsl(45, 100%, 50%)' : 'hsl(120, 100%, 45%)';
+      
+      needle.setAttribute('stroke', color);
+      document.getElementById('needleCenter').setAttribute('fill', color);
+      
+      const scoreEl = document.getElementById('riskScore');
+      const labelEl = document.getElementById('riskLabel');
+      scoreEl.textContent = Math.round(state.riskScore) + '%';
+      scoreEl.style.color = color;
+      scoreEl.style.textShadow = `0 0 20px ${color}`;
+      labelEl.textContent = state.riskLevel;
+      labelEl.style.color = color;
+      labelEl.className = 'risk-label' + (state.riskLevel === 'CRITICAL' ? ' animate-pulse' : '');
+      
+      document.getElementById('riskConfidence').textContent = (85 + Math.random() * 10).toFixed(1);
+    }
+
+    // ========== TRAJECTORY ==========
+    function renderTrajectory() {
+      const svg = document.getElementById('trajectoryChart');
+      const container = svg.parentElement;
+      const w = container.clientWidth - 40;
+      const h = 80;
+      const padding = { left: 30, right: 10, top: 10, bottom: 20 };
+      
+      svg.innerHTML = '';
+      svg.setAttribute('viewBox', `0 0 ${w + padding.left + padding.right} ${h + padding.top + padding.bottom}`);
+
+      const data = state.trajectory;
+      const currentIdx = Math.floor(data.length / 2);
+
+      // Grid lines
+      [0, 35, 60, 100].forEach(val => {
+        const y = padding.top + h - (val / 100) * h;
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', padding.left);
+        line.setAttribute('y1', y);
+        line.setAttribute('x2', w + padding.left);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', 'hsl(220, 15%, 20%)');
+        line.setAttribute('stroke-dasharray', val === 0 || val === 100 ? '0' : '4,4');
+        svg.appendChild(line);
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', padding.left - 5);
+        text.setAttribute('y', y);
+        text.setAttribute('text-anchor', 'end');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('fill', 'hsl(220, 10%, 50%)');
+        text.setAttribute('font-size', '9');
+        text.textContent = val;
+        svg.appendChild(text);
+      });
+
+      // Now marker
+      const nowX = padding.left + (currentIdx / (data.length - 1)) * w;
+      const nowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      nowLine.setAttribute('x1', nowX);
+      nowLine.setAttribute('y1', padding.top);
+      nowLine.setAttribute('x2', nowX);
+      nowLine.setAttribute('y2', padding.top + h);
+      nowLine.setAttribute('stroke', 'hsl(180, 100%, 45%)');
+      nowLine.setAttribute('stroke-dasharray', '2,2');
+      nowLine.setAttribute('opacity', '0.5');
+      svg.appendChild(nowLine);
+
+      // Path
+      const points = data.map((val, i) => {
+        const x = padding.left + (i / (data.length - 1)) * w;
+        const y = padding.top + h - (val / 100) * h;
+        return { x, y, val };
+      });
+
+      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+      
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathD);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'hsl(180, 100%, 45%)');
+      path.setAttribute('stroke-width', '2');
+      path.style.filter = 'drop-shadow(0 0 4px hsl(180, 100%, 45%))';
+      svg.appendChild(path);
+
+      // Points
+      points.forEach((p, i) => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', p.x);
+        circle.setAttribute('cy', p.y);
+        circle.setAttribute('r', i === currentIdx ? 5 : 3);
+        const color = p.val >= 60 ? 'hsl(0, 85%, 50%)' : p.val >= 35 ? 'hsl(45, 100%, 50%)' : 'hsl(120, 100%, 45%)';
+        circle.setAttribute('fill', color);
+        circle.setAttribute('stroke', 'hsl(220, 20%, 10%)');
+        circle.style.filter = `drop-shadow(0 0 3px ${color})`;
+        svg.appendChild(circle);
+      });
+
+      // Labels
+      ['−1h', 'NOW', '+1h'].forEach((label, i) => {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', padding.left + (i / 2) * w);
+        text.setAttribute('y', h + padding.top + 15);
+        text.setAttribute('text-anchor', i === 0 ? 'start' : i === 2 ? 'end' : 'middle');
+        text.setAttribute('fill', i === 1 ? 'hsl(180, 100%, 45%)' : 'hsl(220, 10%, 50%)');
+        text.setAttribute('font-size', '9');
+        text.textContent = label;
+        svg.appendChild(text);
+      });
+    }
+
+    // ========== HEATMAP ==========
+    function renderHeatmap() {
+      const container = document.getElementById('heatmapContainer');
+      const vitals = ['HR', 'SpO₂', 'SBP', 'RR', 'Temp', 'CVP', 'PAP', 'ICP', 'CO₂'];
+      const configs = [
+        { key: 'hr', normal: [60, 100], critical: [45, 140], color: 'hsl(120, 100%, 45%)' },
+        { key: 'spo2', normal: [94, 100], critical: [88, 101], color: 'hsl(190, 100%, 50%)' },
+        { key: 'sbp', normal: [100, 140], critical: [80, 200], color: 'hsl(280, 100%, 65%)' },
+        { key: 'rr', normal: [12, 20], critical: [8, 35], color: 'hsl(55, 100%, 50%)' },
+        { key: 'temp', normal: [36.5, 37.5], critical: [35, 39.5], color: 'hsl(25, 100%, 55%)' },
+        { key: 'cvp', normal: [2, 8], critical: [0, 12], color: 'hsl(200, 100%, 60%)' },
+        { key: 'papSystolic', normal: [15, 25], critical: [10, 40], color: 'hsl(330, 100%, 65%)' },
+        { key: 'icp', normal: [5, 15], critical: [3, 20], color: 'hsl(30, 100%, 55%)' },
+        { key: 'co2', normal: [35, 45], critical: [25, 55], color: 'hsl(160, 100%, 50%)' }
+      ];
+
+      const data = state.vitalHistory.slice(-24);
+      
+      container.innerHTML = vitals.map((label, i) => {
+        const config = configs[i];
+        const cells = data.map(d => {
+          const val = d[config.key];
+          let color, opacity;
+          
+          if (val < config.critical[0] || val > config.critical[1]) {
+            color = 'hsl(0, 85%, 50%)';
+            opacity = 1;
+          } else if (val < config.normal[0] || val > config.normal[1]) {
+            color = 'hsl(45, 100%, 50%)';
+            opacity = 0.8;
+          } else {
+            color = config.color;
+            opacity = 0.6;
+          }
+          
+          return `<div class="heatmap-cell" style="background: ${color}; opacity: ${opacity};"></div>`;
+        }).join('');
+
+        return `
+          <div class="heatmap-row">
+            <div class="heatmap-label">${label}</div>
+            <div class="heatmap-cells">${cells}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ========== ALERTS ==========
+    function checkAlerts() {
+      const alerts = [];
+      const v = state.vitals;
+
+      if (state.riskLevel === 'CRITICAL') alerts.push('AI RISK: CRITICAL');
+      if (v.spO2 < 90) alerts.push(`HYPOXEMIA: SpO₂ ${Math.round(v.spO2)}%`);
+      else if (v.spO2 < 94) alerts.push(`LOW SpO₂: ${Math.round(v.spO2)}%`);
+      if (v.heartRate > 130) alerts.push(`TACHYCARDIA: HR ${Math.round(v.heartRate)}`);
+      if (v.heartRate < 50) alerts.push(`BRADYCARDIA: HR ${Math.round(v.heartRate)}`);
+      if (v.systolicBP < 90) alerts.push(`HYPOTENSION: BP ${Math.round(v.systolicBP)}/${Math.round(v.diastolicBP)}`);
+      if (v.temperature > 39) alerts.push(`FEVER: ${v.temperature.toFixed(1)}°C`);
+      
+      if (v.icp > 20) alerts.push(`INTRACRANIAL HYPERTENSION: ICP ${Math.round(v.icp)} mmHg`);
+      if (v.co2 > 50) alerts.push(`HYPERCAPNIA: CO₂ ${Math.round(v.co2)} mmHg`);
+      if (v.cvp > 12) alerts.push(`ELEVATED CVP: ${v.cvp.toFixed(1)} mmHg`);
+      if (v.papSystolic > 35) alerts.push(`PULMONARY HYPERTENSION: PAP ${Math.round(v.papSystolic)}/${Math.round(v.papDiastolic)}`);
+
+      const banner = document.getElementById('alertBanner');
+      const alertText = document.getElementById('alertText');
+
+      if (alerts.length > 0 && !state.alertDismissed) {
+        banner.style.display = 'flex';
+        banner.className = 'alert-banner ' + (state.riskLevel === 'CRITICAL' ? 'alert-critical' : 'alert-warning');
+        alertText.textContent = alerts.slice(0, 3).join(' | ');
+        playAlertSound();
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+
+    function dismissAlert() {
+      state.alertDismissed = true;
+      document.getElementById('alertBanner').style.display = 'none';
+    }
+
+    function updateRecommendations() {
+      const recs = document.getElementById('recommendations');
+      const v = state.vitals;
+      let html = '';
+
+      if (state.riskLevel === 'STABLE') {
+        html = `
+          <div style="padding: 8px; background: rgba(34, 197, 94, 0.1); border-radius: 6px; margin-bottom: 8px;">✓ Vitals within normal limits</div>
+          <div style="padding: 8px; background: var(--muted); border-radius: 6px;">Continue current monitoring protocol</div>
+        `;
+      } else if (state.riskLevel === 'BORDERLINE') {
+        html = `
+          <div style="padding: 8px; background: rgba(251, 191, 36, 0.1); border-radius: 6px; margin-bottom: 8px;">⚠️ Elevated risk detected</div>
+          <div style="padding: 8px; background: var(--muted); border-radius: 6px; margin-bottom: 8px;">• Increase monitoring frequency</div>
+          <div style="padding: 8px; background: var(--muted); border-radius: 6px;">• Review medication regimen</div>
+        `;
+      } else {
+        html = `
+          <div style="padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; margin-bottom: 8px;">🚨 CRITICAL - Immediate attention required</div>
+          <div style="padding: 8px; background: var(--muted); border-radius: 6px; margin-bottom: 8px;">• Notify attending physician</div>
+          <div style="padding: 8px; background: var(--muted); border-radius: 6px; margin-bottom: 8px;">• Prepare emergency interventions</div>
+          ${v.spO2 < 90 ? '<div style="padding: 8px; background: var(--muted); border-radius: 6px;">• Consider increasing O₂ support</div>' : ''}
+          ${v.icp > 20 ? '<div style="padding: 8px; background: var(--muted); border-radius: 6px;">• Consider ICP management</div>' : ''}
+        `;
+      }
+      recs.innerHTML = html;
+    }
+
+    // ========== AUDIO ==========
+    function playAlertSound() {
+      if (state.isMuted || !audioContext) return;
+      
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      
+      osc.frequency.value = state.riskLevel === 'CRITICAL' ? 880 : 660;
+      osc.type = 'sine';
+      gain.gain.value = 0.1;
+      
+      osc.start();
+      osc.stop(audioContext.currentTime + 0.15);
+    }
+
+    function startHeartbeatAudio() {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      heartbeatInterval = setInterval(() => {
+        if (!state.waveformAudioEnabled || state.isMuted) return;
+        
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        
+        osc.frequency.value = 200 + (state.vitals.spO2 - 85) * 20;
+        osc.type = 'sine';
+        
+        gain.gain.setValueAtTime(0.05, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.1);
+      }, 60000 / state.vitals.heartRate);
+    }
+
+    function toggleMute() {
+      state.isMuted = !state.isMuted;
+      const btn = document.getElementById('muteBtn');
+      const icon = document.getElementById('muteIcon');
+      const text = document.getElementById('muteText');
+      
+      if (state.isMuted) {
+        icon.textContent = '🔇';
+        text.textContent = 'Muted';
+        btn.classList.remove('active');
+      } else {
+        icon.textContent = '🔊';
+        text.textContent = 'Audio On';
+        btn.classList.add('active');
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function toggleWaveformAudio() {
+      state.waveformAudioEnabled = !state.waveformAudioEnabled;
+      const btn = document.getElementById('waveformAudioBtn');
+      
+      if (state.waveformAudioEnabled) {
+        btn.classList.add('active');
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        startHeartbeatAudio();
+      } else {
+        btn.classList.remove('active');
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+      }
+    }
+
+    // ========== CONTROLS ==========
+    function toggleLive() {
+      state.isLive = !state.isLive;
+      state.alertDismissed = false;
+      const btn = document.getElementById('liveBtn');
+      const text = document.getElementById('liveBtnText');
+      const dot = document.getElementById('liveDot');
+      
+      if (state.isLive) {
+        btn.className = 'live-btn active';
+        text.textContent = 'LIVE';
+        dot.style.display = 'block';
+      } else {
+        btn.className = 'live-btn paused';
+        text.textContent = 'PAUSED';
+        dot.style.display = 'none';
+      }
+    }
+
+    function loadCriticalExample() {
+      state.vitals = {
+        heartRate: 160,
+        spO2: 78,
+        systolicBP: 82,
+        diastolicBP: 44,
+        respiratoryRate: 33,
+        temperature: 39.1,
+        cvp: 18,
+        papSystolic: 42,
+        papDiastolic: 18,
+        icp: 24,
+        co2: 58
+      };
+      state.labs = {
+        lactate: 4.5,
+        creatinine: 2.4,
+        wbc: 21.0,
+        hemoglobin: 8.9,
+        glucose: 180,
+        potassium: 5.2,
+        crp: 27
+      };
+      state.additionalParams = {
+        mobility_score: 0,
+        nurse_alert: 1,
+        sepsis_risk_score: 8,
+        age: 80,
+        comorbidity_index: 4,
+        hour_from_admission: 2,
+        gender: "F",
+        oxygen_device: "ventilator",
+        admission_type: "emergency",
+        oxygen_flow: 14,
+        crp_level: 27
+      };
+      state.alertDismissed = false;
+      
+      document.getElementById('lactateValue').textContent = state.labs.lactate;
+      document.getElementById('creatinineValue').textContent = state.labs.creatinine;
+      document.getElementById('wbcValue').textContent = state.labs.wbc;
+      document.getElementById('hgbValue').textContent = state.labs.hemoglobin;
+      document.getElementById('glucoseValue').textContent = state.labs.glucose;
+      document.getElementById('potassiumValue').textContent = state.labs.potassium;
+      document.getElementById('crpValue').textContent = state.labs.crp;
+      
+      document.getElementById('gcsValue').textContent = 10;
+      document.getElementById('sofaValue').textContent = 12;
+      document.getElementById('apacheValue').textContent = 28;
+      document.getElementById('sepsisValue').textContent = state.additionalParams.sepsis_risk_score;
+      
+      document.getElementById('oxygenDevice').textContent = 
+        `Ventilator @ ${state.additionalParams.oxygen_flow}L/min`;
+      
+      document.getElementById('inputHR').value = state.vitals.heartRate;
+      document.getElementById('inputSpO2').value = state.vitals.spO2;
+      document.getElementById('inputSBP').value = state.vitals.systolicBP;
+      document.getElementById('inputDBP').value = state.vitals.diastolicBP;
+      document.getElementById('inputTemp').value = state.vitals.temperature;
+      document.getElementById('inputRR').value = state.vitals.respiratoryRate;
+      document.getElementById('inputLactate').value = state.labs.lactate;
+      document.getElementById('inputCreatinine').value = state.labs.creatinine;
+      document.getElementById('inputWBC').value = state.labs.wbc;
+      document.getElementById('inputHGB').value = state.labs.hemoglobin;
+      document.getElementById('inputCRP').value = state.labs.crp;
+      document.getElementById('inputO2Flow').value = state.additionalParams.oxygen_flow;
+      document.getElementById('inputO2Device').value = state.additionalParams.oxygen_device;
+      document.getElementById('inputMobility').value = state.additionalParams.mobility_score;
+      document.getElementById('inputNurseAlert').value = state.additionalParams.nurse_alert;
+      document.getElementById('inputSepsisRisk').value = state.additionalParams.sepsis_risk_score;
+      document.getElementById('inputAge').value = state.additionalParams.age;
+      document.getElementById('inputComorbidity').value = state.additionalParams.comorbidity_index;
+      document.getElementById('inputHours').value = state.additionalParams.hour_from_admission;
+      document.getElementById('inputGender').value = state.additionalParams.gender;
+      document.getElementById('inputAdmissionType').value = state.additionalParams.admission_type;
+      
+      calculateWaveformParameters();
+      getMLPrediction();
+      updateUI();
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function applyManualInputs() {
+      state.vitals.heartRate = parseFloat(document.getElementById('inputHR').value);
+      state.vitals.spO2 = parseFloat(document.getElementById('inputSpO2').value);
+      state.vitals.systolicBP = parseFloat(document.getElementById('inputSBP').value);
+      state.vitals.diastolicBP = parseFloat(document.getElementById('inputDBP').value);
+      state.vitals.temperature = parseFloat(document.getElementById('inputTemp').value);
+      state.vitals.respiratoryRate = parseFloat(document.getElementById('inputRR').value);
+      
+      state.labs.lactate = parseFloat(document.getElementById('inputLactate').value);
+      state.labs.creatinine = parseFloat(document.getElementById('inputCreatinine').value);
+      state.labs.wbc = parseFloat(document.getElementById('inputWBC').value);
+      state.labs.hemoglobin = parseFloat(document.getElementById('inputHGB').value);
+      state.labs.crp = parseFloat(document.getElementById('inputCRP').value);
+      
+      state.additionalParams.mobility_score = parseInt(document.getElementById('inputMobility').value);
+      state.additionalParams.nurse_alert = parseInt(document.getElementById('inputNurseAlert').value);
+      state.additionalParams.sepsis_risk_score = parseInt(document.getElementById('inputSepsisRisk').value);
+      state.additionalParams.age = parseInt(document.getElementById('inputAge').value);
+      state.additionalParams.comorbidity_index = parseInt(document.getElementById('inputComorbidity').value);
+      state.additionalParams.hour_from_admission = parseInt(document.getElementById('inputHours').value);
+      state.additionalParams.gender = document.getElementById('inputGender').value;
+      state.additionalParams.admission_type = document.getElementById('inputAdmissionType').value;
+      state.additionalParams.oxygen_flow = parseFloat(document.getElementById('inputO2Flow').value);
+      state.additionalParams.oxygen_device = document.getElementById('inputO2Device').value;
+      state.additionalParams.crp_level = parseFloat(document.getElementById('inputCRP').value);
+      
+      document.getElementById('lactateValue').textContent = state.labs.lactate;
+      document.getElementById('creatinineValue').textContent = state.labs.creatinine;
+      document.getElementById('wbcValue').textContent = state.labs.wbc;
+      document.getElementById('hgbValue').textContent = state.labs.hemoglobin;
+      document.getElementById('crpValue').textContent = state.labs.crp;
+      document.getElementById('sepsisValue').textContent = state.additionalParams.sepsis_risk_score;
+      document.getElementById('oxygenDevice').textContent = 
+        `${state.additionalParams.oxygen_device.replace('_', ' ')} @ ${state.additionalParams.oxygen_flow}L/min`;
+      
+      calculateWaveformParameters();
+      getMLPrediction();
+      updateUI();
+    }
+
+    function toggleVent() {
+      const enabled = document.getElementById('ventEnabled').checked;
+      const grid = document.getElementById('ventGrid');
+      grid.style.opacity = enabled ? '1' : '0.5';
+      grid.style.pointerEvents = enabled ? 'auto' : 'none';
+      document.getElementById('oxygenDevice').textContent = enabled ? 'Ventilator' : 'Nasal Cannula @ 2L/min';
+      state.additionalParams.oxygen_device = enabled ? 'ventilator' : 'nasal_cannula';
+    }
+
+    function addNote() {
+      const textarea = document.getElementById('newNote');
+      const content = textarea.value.trim();
+      if (!content) return;
+      
+      notes.unshift({
+        author: 'Current User',
+        role: 'RN',
+        time: 'Just now',
+        content
+      });
+      
+      textarea.value = '';
+      renderNotes();
+    }
+
+    function requestNotifications() {
+      if ('Notification' in window) {
+        Notification.requestPermission().then(perm => {
+          if (perm === 'granted') {
+            new Notification('ICU Alerts Enabled', { body: 'You will receive critical vital alerts' });
+          }
+        });
+      }
+    }
+
+    // ========== RENDER LISTS ==========
+    function renderPatientList() {
+      const container = document.getElementById('patientList');
+      container.innerHTML = patients.map(p => {
+        const riskClass = p.level === 'CRITICAL' ? 'critical' : p.level === 'BORDERLINE' ? 'warning' : '';
+        const activeClass = p.id === state.activePatientId ? 'active' : '';
+        
+        return `
+          <div class="patient-card ${riskClass} ${activeClass}" onclick="selectPatient('${p.id}')">
+            <div class="patient-card-header">
+              <span class="patient-bed">${p.bed}</span>
+              <span class="patient-risk-badge ${riskClass || 'stable'}">${p.risk}%</span>
+            </div>
+            <div style="font-size: 12px; color: var(--muted-foreground); margin-bottom: 8px;">
+              ${p.id} • ${p.age}y ${p.gender}
+            </div>
+            <div class="patient-card-vitals">
+              <div class="mini-vital">❤️ <span class="mini-vital-value">${p.hr}</span></div>
+              <div class="mini-vital">🫁 <span class="mini-vital-value">${p.spo2}%</span></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectPatient(id) {
+      state.activePatientId = id;
+      const patient = patients.find(p => p.id === id);
+      if (patient) {
+        document.getElementById('patientId').textContent = patient.id;
+        document.getElementById('patientDetails').textContent = `${patient.age}y ${patient.gender} • Emergency`;
+        document.getElementById('patientBed').textContent = patient.bed;
+        
+        state.vitals.heartRate = patient.hr;
+        state.vitals.spO2 = patient.spo2;
+        state.riskScore = patient.risk;
+        state.riskLevel = patient.level;
+        state.alertDismissed = false;
+        state.additionalParams.age = patient.age;
+        state.additionalParams.gender = patient.gender;
+        
+        document.getElementById('inputAge').value = patient.age;
+        document.getElementById('inputGender').value = patient.gender;
+        
+        calculateWaveformParameters();
+        getMLPrediction();
+        updateUI();
+      }
+      renderPatientList();
+    }
+
+    function renderMedications() {
+      const container = document.getElementById('medList');
+      container.innerHTML = medications.map(m => `
+        <div class="med-item">
+          <div>
+            <div class="med-name">${m.name}</div>
+            <div class="med-dose">${m.dose} • ${m.route}</div>
+          </div>
+          <span class="med-status ${m.status}">${m.status.toUpperCase()}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderNotes() {
+      const container = document.getElementById('notesList');
+      container.innerHTML = notes.map(n => `
+        <div class="note-item">
+          <div class="note-header">
+            <span class="note-author">${n.author} <span style="color: var(--muted-foreground);">(${n.role})</span></span>
+            <span class="note-time">${n.time}</span>
+          </div>
+          <div class="note-content">${n.content}</div>
+        </div>
+      `).join('');
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+      
+      const icuStart = Date.now() - 18 * 60 * 60 * 1000;
+      const diff = Date.now() - icuStart;
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      document.getElementById('icuTime').textContent = `${hours}h ${minutes}m`;
+      
+      state.additionalParams.hour_from_admission = hours;
+    }
+
+    // ========== INITIALIZE EVERYTHING ==========
+    window.addEventListener('load', init);
+    window.addEventListener('resize', handleResize);
+  </script>
+</body>
+</html>
