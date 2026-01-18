@@ -1,4 +1,6 @@
 / ========== RESPONSIVE STATE MANAGEMENT ==========
+alert("JS RUNNING");
+
 let responsiveState = {
   isMobile: false,
   isTablet: false,
@@ -9,7 +11,13 @@ let responsiveState = {
 function initResponsive() {
   checkViewport();
   window.addEventListener('resize', handleResize);
-  document.getElementById('mobileToggle').addEventListener('click', toggleSidebar);
+  
+ // document.getElementById('mobileToggle').addEventListener('click', toggleSidebar);
+const mobileToggle = document.getElementById('mobileToggle');
+if (mobileToggle) {
+  mobileToggle.addEventListener('click', toggleSidebar);
+}
+
   
   // Close sidebar when clicking outside on mobile
   document.addEventListener('click', (e) => {
@@ -29,12 +37,14 @@ function checkViewport() {
   responsiveState.isTablet = width > 768 && width <= 1024;
   
   // Update sidebar state
-  const sidebar = document.getElementById('sidebar');
-  if (responsiveState.isMobile && !responsiveState.sidebarOpen) {
-    sidebar.classList.remove('active');
-  } else if (!responsiveState.isMobile) {
-    sidebar.classList.add('active');
-  }
+const sidebar = document.getElementById('sidebar');
+if (!sidebar) return;
+if (responsiveState.isMobile && !responsiveState.sidebarOpen) {
+  sidebar.classList.remove('active');
+} else if (!responsiveState.isMobile) {
+  sidebar.classList.add('active');
+}
+
   
   // Adjust waveform heights based on screen size
   adjustWaveformHeights();
@@ -1642,3 +1652,7 @@ window.addEventListener('load', init);
 window.addEventListener('resize', handleResize);
 document.addEventListener('DOMContentLoaded', init);
 
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM ready, init running");
+  init();
+});
