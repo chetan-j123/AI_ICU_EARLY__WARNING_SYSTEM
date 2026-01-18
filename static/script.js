@@ -1656,3 +1656,12 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM ready, init running");
   init();
 });
+
+document.addEventListener("DOMContentLoaded", function () {
+    console.log("JS LOADED");
+    alert("JS RUNNING");
+    initResponsive();
+});
+
+
+
