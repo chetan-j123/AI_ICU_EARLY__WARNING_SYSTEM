@@ -1640,3 +1640,5 @@ function updateClock() {
 // ========== INITIALIZE EVERYTHING ==========
 window.addEventListener('load', init);
 window.addEventListener('resize', handleResize);
+document.addEventListener('DOMContentLoaded', init);
+
