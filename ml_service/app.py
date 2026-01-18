@@ -1,3 +1,4 @@
+
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import traceback
@@ -48,3 +49,8 @@ def predict():
             "error": str(e),
             "trace": traceback.format_exc()
         }), 500
+
+
+
+print(f"Static folder path: {app.static_folder}")
+print(f"Template folder path: {app.template_folder}")
