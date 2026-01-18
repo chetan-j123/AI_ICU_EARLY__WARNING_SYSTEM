@@ -1,0 +1,589 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICU Vital Sentinel Dashboard</title>
+
+  <!-- ✅ Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ✅ Flask static CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- ✅ Flask static JS with defer (safe for DOM access) -->
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+
+<body>
+  <!-- Alert Banner -->
+  <div id="alertBanner" class="alert-banner alert-critical" style="display: none;">
+    <span>⚠️</span>
+    <span id="alertText" class="font-mono">AI RISK PREDICTION: CRITICAL </span>
+    <span>🔔</span>
+    <button onclick="dismissAlert()" style="margin-left: 16px; background: rgba(255,255,255,0.2); border: none; padding: 4px 8px; border-radius: 4px; color: white; cursor: pointer;">✕</button>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <button class="mobile-toggle" id="mobileToggle">☰</button>
+    <div class="header-left">
+      <div class="status-indicator">
+        <div id="statusDot" class="status-dot stable"></div>
+        <span id="statusText" class="status-text stable font-mono">STABLE</span>
+      </div>
+      <div class="patient-info">
+        <span class="patient-id font-mono" id="patientId">ICU-2024-0847</span>
+        <span class="patient-details" id="patientDetails">67y M • Emergency</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px; border-left: 1px solid var(--border); padding-left: 12px;">
+        <span style="color: var(--primary);" class="font-mono">MICU</span>
+        <span style="margin: 0 4px; color: var(--muted-foreground);">|</span>
+        <span class="font-mono" id="patientBed">Bed 12</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+        <span>🕐</span>
+        <span style="color: var(--muted-foreground);">ICU Time:</span>
+        <span class="font-mono" id="icuTime">18h 32m</span>
+      </div>
+      <div class="font-mono" style="font-size: 13px; color: var(--muted-foreground);" id="currentTime">12:34:56</div>
+      
+      <!-- Connection Status Indicator -->
+      <div id="connectionStatus" style="display: flex; align-items: center; gap: 4px; font-size: 11px;">
+        <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--vital-stable);" id="backendStatusDot"></div>
+        <span id="backendStatusText">ML Connected</span>
+      </div>
+      
+      <button id="liveBtn" class="live-btn active" onclick="toggleLive()">
+        <span>📊</span>
+        <span id="liveBtnText">LIVE</span>
+        <div class="live-dot" id="liveDot"></div>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">ICU BEDS</span>
+        <div class="bed-count">
+          <span style="color: var(--vital-critical);">● 2 Critical</span>
+          <span style="color: var(--vital-warning);">● 1 Borderline</span>
+        </div>
+      </div>
+      <div id="patientList"></div>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Left Column - Waveforms & Vitals -->
+      <div class="left-column">
+        <!-- ECG Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-stable);">ECG II</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-stable);" id="hrValue">78</span>
+          <canvas id="ecgCanvas"></canvas>
+        </div>
+
+        <!-- SpO2 Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-oxygen);">PLETH / SpO₂</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-oxygen);" id="spo2Value">97</span>
+          <canvas id="plethCanvas"></canvas>
+        </div>
+
+        <!-- Resp Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-resp);">RESP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-resp);" id="rrValue">16</span>
+          <canvas id="respCanvas"></canvas>
+        </div>
+
+        <!-- ABP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pressure);">ABP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pressure);" id="bpWaveValue">122</span>
+          <canvas id="abpCanvas"></canvas>
+        </div>
+
+        <!-- CVP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-cvp);">CVP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-cvp);" id="cvpValue">8</span>
+          <canvas id="cvpCanvas"></canvas>
+        </div>
+
+        <!-- PAP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pap);">PAP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pap);" id="papValue">25/10</span>
+          <canvas id="papCanvas"></canvas>
+        </div>
+
+        <!-- ICP Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-icp);">ICP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-icp);" id="icpValue">12</span>
+          <canvas id="icpCanvas"></canvas>
+        </div>
+
+        <!-- CO₂ Waveform -->
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-co2);">CO₂</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-co2);" id="co2Value">38</span>
+          <canvas id="co2Canvas"></canvas>
+        </div>
+
+        <!-- Vital Cards Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+          <div class="vital-card" id="hrCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">❤️ Heart Rate</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="hrCardValue">78</span>
+              <span class="vital-card-unit">bpm</span>
+            </div>
+          </div>
+          <div class="vital-card" id="spo2Card">
+            <div class="vital-card-header">
+              <span class="vital-card-label">🫁 SpO₂</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="spo2CardValue">97</span>
+              <span class="vital-card-unit">%</span>
+            </div>
+          </div>
+          <div class="vital-card" id="rrCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">💨 Resp Rate</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="rrCardValue">16</span>
+              <span class="vital-card-unit">br/min</span>
+            </div>
+          </div>
+          <div class="vital-card" id="tempCard">
+            <div class="vital-card-header">
+              <span class="vital-card-label">🌡️ Temp</span>
+            </div>
+            <div>
+              <span class="vital-card-value stable font-mono" id="tempCardValue">37.1</span>
+              <span class="vital-card-unit">°C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Blood Pressure Panel -->
+        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="color: var(--vital-pressure);">📈 NIBP</span>
+          </div>
+          <div class="bp-display">
+            <span class="bp-value font-mono" id="bpValue">122/78</span>
+            <span class="vital-card-unit">mmHg</span>
+          </div>
+          <div style="font-size: 12px; color: var(--muted-foreground); margin-top: 4px;">
+            MAP: <span class="font-mono" id="mapValue">93</span>
+          </div>
+        </div>
+
+        <!-- Audio Control -->
+        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+          <div class="controls">
+            <button class="control-btn" id="muteBtn" onclick="toggleMute()">
+              <span id="muteIcon">🔊</span>
+              <span id="muteText">Audio On</span>
+            </button>
+            <button class="control-btn" id="waveformAudioBtn" onclick="toggleWaveformAudio()">
+              <span>♥️</span>
+              <span>Waveform Sound</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Column - Risk & Monitoring -->
+      <div class="center-column">
+        <div class="controls">
+          <button class="control-btn" id="loadCriticalBtn" onclick="loadCriticalExample()">
+            <span>⚡</span>
+            <span>Load Critical</span>
+          </button>
+          <button class="control-btn" onclick="requestNotifications()">
+            <span>🔔</span>
+            <span>Notifications</span>
+          </button>
+          <button class="control-btn" onclick="testBackendConnection()">
+            <span>🔄</span>
+            <span>Test Backend</span>
+          </button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-header">
+          <button class="tab-btn active" onclick="switchTab('monitor')">Monitor</button>
+          <button class="tab-btn" onclick="switchTab('history')">History</button>
+          <button class="tab-btn" onclick="switchTab('meds')">Meds</button>
+          <button class="tab-btn" onclick="switchTab('vent')">Vent</button>
+          <button class="tab-btn" onclick="switchTab('notes')">Notes</button>
+        </div>
+
+        <!-- Monitor Tab -->
+        <div id="tab-monitor" class="tab-content active">
+          <div class="panel">
+            <div class="panel-title">📊 AI MORTALITY RISK</div>
+            <div class="risk-gauge-container">
+              <svg width="280" height="160" class="trajectory-svg">
+                <defs>
+                  <linearGradient id="stableGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(120, 100%, 35%)"/>
+                    <stop offset="100%" stop-color="hsl(120, 100%, 45%)"/>
+                  </linearGradient>
+                  <linearGradient id="warningGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(45, 100%, 40%)"/>
+                    <stop offset="100%" stop-color="hsl(45, 100%, 50%)"/>
+                  </linearGradient>
+                  <linearGradient id="criticalGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stop-color="hsl(0, 85%, 40%)"/>
+                    <stop offset="100%" stop-color="hsl(0, 85%, 55%)"/>
+                  </linearGradient>
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <!-- Background track -->
+                <path id="bgTrack" fill="none" stroke="hsl(220, 15%, 15%)" stroke-width="18" stroke-linecap="round"/>
+                <!-- Stable zone -->
+                <path id="stableZone" fill="none" stroke="url(#stableGrad)" stroke-width="16" opacity="0.8"/>
+                <!-- Warning zone -->
+                <path id="warningZone" fill="none" stroke="url(#warningGrad)" stroke-width="16" opacity="0.8"/>
+                <!-- Critical zone -->
+                <path id="criticalZone" fill="none" stroke="url(#criticalGrad)" stroke-width="16" stroke-linecap="round" opacity="0.8"/>
+                <!-- Needle -->
+                <g filter="url(#glow)">
+                  <line id="needle" stroke="hsl(120, 100%, 45%)" stroke-width="4" stroke-linecap="round"/>
+                  <circle id="needleCenter" r="8" fill="hsl(120, 100%, 45%)"/>
+                </g>
+                <!-- Labels -->
+                <text x="25" y="130" fill="hsl(120, 100%, 45%)" font-size="10" font-family="monospace">0</text>
+                <text x="55" y="45" fill="hsl(120, 100%, 45%)" font-size="9" font-family="monospace">STABLE</text>
+                <text x="115" y="25" fill="hsl(45, 100%, 50%)" font-size="9" font-family="monospace">RISK</text>
+                <text x="175" y="45" fill="hsl(0, 85%, 50%)" font-size="9" font-family="monospace">CRITICAL</text>
+                <text x="240" y="130" fill="hsl(0, 85%, 50%)" font-size="10" font-family="monospace">100</text>
+              </svg>
+              <div class="risk-score font-mono" id="riskScore" style="color: var(--vital-stable); text-shadow: 0 0 20px var(--vital-stable);">25%</div>
+              <div class="risk-label" id="riskLabel" style="color: var(--vital-stable);">STABLE</div>
+              <div class="risk-meta">
+                <span>Horizon: 1 hour</span>
+                <span>•</span>
+                <span>Confidence: <span id="riskConfidence">92.5</span>%</span>
+              </div>
+              <!-- ML Model Probabilities Display -->
+              <div id="mlProbabilities" style="margin-top: 12px; font-size: 10px; color: var(--muted-foreground); display: none;">
+                <div>Logistic: <span id="logisticProb">0.00</span></div>
+                <div>Random Forest: <span id="rfProb">0.00</span></div>
+                <div>Final Ensemble: <span id="finalProb">0.00</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Trajectory -->
+          <div class="panel" style="margin-top: 12px;">
+            <div class="panel-title">Risk Trajectory (Past → Future)</div>
+            <svg width="100%" height="100" id="trajectoryChart"></svg>
+          </div>
+
+          <!-- Vital Heatmap -->
+          <div class="panel" style="margin-top: 12px;">
+            <div class="panel-title">Vital History Heatmap (Last Hour)</div>
+            <div id="heatmapContainer" class="heatmap-container"></div>
+          </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="tab-history" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Vital Trends</div>
+            <canvas id="historyChart" height="200"></canvas>
+          </div>
+          <div class="input-panel">
+            <div class="panel-title">Manual Input (Send to ML Model)</div>
+            <div class="input-grid" id="manualInputs">
+              <!-- Basic Vitals -->
+              <div class="input-item">
+                <label>Heart Rate (bpm)</label>
+                <input type="number" id="inputHR" min="30" max="220" value="78">
+              </div>
+              <div class="input-item">
+                <label>SpO₂ (%)</label>
+                <input type="number" id="inputSpO2" min="50" max="100" value="97">
+              </div>
+              <div class="input-item">
+                <label>Systolic BP</label>
+                <input type="number" id="inputSBP" min="40" max="250" value="122">
+              </div>
+              <div class="input-item">
+                <label>Diastolic BP</label>
+                <input type="number" id="inputDBP" min="20" max="150" value="78">
+              </div>
+              <div class="input-item">
+                <label>Temperature (°C)</label>
+                <input type="number" id="inputTemp" min="32" max="43" step="0.1" value="37.1">
+              </div>
+              <div class="input-item">
+                <label>Resp Rate</label>
+                <input type="number" id="inputRR" min="4" max="60" value="16">
+              </div>
+              
+              <!-- Lab Values -->
+              <div class="input-item">
+                <label>Lactate</label>
+                <input type="number" id="inputLactate" min="0.5" max="20" step="0.1" value="1.2">
+              </div>
+              <div class="input-item">
+                <label>Creatinine</label>
+                <input type="number" id="inputCreatinine" min="0.2" max="10" step="0.1" value="0.9">
+              </div>
+              <div class="input-item">
+                <label>WBC Count (x1000)</label>
+                <input type="number" id="inputWBC" min="1" max="50" step="0.1" value="8.2">
+              </div>
+              <div class="input-item">
+                <label>Hemoglobin</label>
+                <input type="number" id="inputHGB" min="5" max="20" step="0.1" value="13.5">
+              </div>
+              <div class="input-item">
+                <label>CRP Level</label>
+                <input type="number" id="inputCRP" min="0" max="500" value="0">
+              </div>
+              
+              <!-- Oxygen Settings -->
+              <div class="input-item">
+                <label>Oxygen Flow (L/min)</label>
+                <input type="number" id="inputO2Flow" min="0" max="15" value="2">
+              </div>
+              <div class="input-item">
+                <label>Oxygen Device</label>
+                <select id="inputO2Device">
+                  <option value="none">None</option>
+                  <option value="room_air">Room Air</option>
+                  <option value="nasal_cannula" selected>Nasal Cannula</option>
+                  <option value="mask">Mask</option>
+                  <option value="non_rebreather">Non-Rebreather</option>
+                  <option value="bipap">BiPAP</option>
+                  <option value="cpap">CPAP</option>
+                  <option value="ventilator">Ventilator</option>
+                </select>
+              </div>
+              
+              <!-- Additional Parameters -->
+              <div class="input-item">
+                <label>Mobility Score</label>
+                <input type="number" id="inputMobility" min="0" max="10" value="0">
+              </div>
+              <div class="input-item">
+                <label>Nurse Alert</label>
+                <select id="inputNurseAlert">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+              </div>
+              <div class="input-item">
+                <label>Sepsis Risk Score</label>
+                <input type="number" id="inputSepsisRisk" min="0" max="20" value="0">
+              </div>
+              <div class="input-item">
+                <label>Age</label>
+                <input type="number" id="inputAge" min="0" max="120" value="67">
+              </div>
+              <div class="input-item">
+                <label>Comorbidity Index</label>
+                <input type="number" id="inputComorbidity" min="0" max="10" value="0">
+              </div>
+              <div class="input-item">
+                <label>Hours from Admission</label>
+                <input type="number" id="inputHours" min="0" max="720" value="2">
+              </div>
+              <div class="input-item">
+                <label>Gender</label>
+                <select id="inputGender">
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+              <div class="input-item">
+                <label>Admission Type</label>
+                <select id="inputAdmissionType">
+                  <option value="emergency" selected>Emergency</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="elective">Elective</option>
+                </select>
+              </div>
+            </div>
+            <button class="control-btn" style="margin-top: 12px; width: 100%;" onclick="applyManualInputs()">Apply Values & Get Prediction</button>
+          </div>
+        </div>
+
+        <!-- Meds Tab -->
+        <div id="tab-meds" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Active Medications</div>
+            <div class="med-list" id="medList"></div>
+          </div>
+        </div>
+
+        <!-- Vent Tab -->
+        <div id="tab-vent" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Ventilator Settings</div>
+            <div style="margin-bottom: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="ventEnabled" onchange="toggleVent()">
+                <span>Ventilator Enabled</span>
+              </label>
+            </div>
+            <div class="vent-grid" id="ventGrid">
+              <div class="vent-item">
+                <div class="vent-label">Mode</div>
+                <div class="vent-value font-mono">AC-VC</div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">PEEP</div>
+                <div class="vent-value font-mono">8<span class="vent-unit"> cmH₂O</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Tidal Volume</div>
+                <div class="vent-value font-mono">450<span class="vent-unit"> mL</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">FiO₂</div>
+                <div class="vent-value font-mono">40<span class="vent-unit">%</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Resp Rate</div>
+                <div class="vent-value font-mono">14<span class="vent-unit"> /min</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">I:E Ratio</div>
+                <div class="vent-value font-mono">1:2</div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Peak Pressure</div>
+                <div class="vent-value font-mono">28<span class="vent-unit"> cmH₂O</span></div>
+              </div>
+              <div class="vent-item">
+                <div class="vent-label">Minute Vent</div>
+                <div class="vent-value font-mono">6.3<span class="vent-unit"> L/min</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes Tab -->
+        <div id="tab-notes" class="tab-content">
+          <div class="panel">
+            <div class="panel-title">Clinical Notes</div>
+            <div id="notesList"></div>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+              <textarea id="newNote" placeholder="Add a clinical note..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); min-height: 80px; resize: vertical;"></textarea>
+              <button class="control-btn" style="margin-top: 8px;" onclick="addNote()">Add Note</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column - Context -->
+      <div class="right-column">
+        <div class="panel">
+          <div class="panel-title">Clinical Context</div>
+          <div style="display: grid; gap: 12px;">
+            <div>
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase;">Oxygen Support</div>
+              <div class="font-mono" id="oxygenDevice">Nasal Cannula @ 2L/min</div>
+            </div>
+            <div>
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase;">FiO₂</div>
+              <div class="font-mono" id="fio2Value">28%</div>
+            </div>
+            <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+              <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 8px;">Clinical Scores</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <span style="color: var(--muted-foreground);">GCS:</span>
+                  <span class="font-mono" id="gcsValue">15</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">SOFA:</span>
+                  <span class="font-mono" id="sofaValue">2</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">APACHE II:</span>
+                  <span class="font-mono" id="apacheValue">12</span>
+                </div>
+                <div>
+                  <span style="color: var(--muted-foreground);">Sepsis Risk:</span>
+                  <span class="font-mono" id="sepsisValue">1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 12px;">
+          <div class="panel-title">Lab Values</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+            <div>
+              <span style="color: var(--muted-foreground);">Lactate:</span>
+              <span class="font-mono" id="lactateValue">1.2</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Creatinine:</span>
+              <span class="font-mono" id="creatinineValue">0.9</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">WBC:</span>
+              <span class="font-mono" id="wbcValue">8.2</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Hemoglobin:</span>
+              <span class="font-mono" id="hgbValue">13.5</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">Glucose:</span>
+              <span class="font-mono" id="glucoseValue">112</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">K+:</span>
+              <span class="font-mono" id="potassiumValue">4.1</span>
+            </div>
+            <div>
+              <span style="color: var(--muted-foreground);">CRP:</span>
+              <span class="font-mono" id="crpValue">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 12px;">
+          <div class="panel-title">AI Recommendations</div>
+          <div id="recommendations" style="font-size: 13px; line-height: 1.6;">
+            <div style="padding: 8px; background: rgba(34, 197, 94, 0.1); border-radius: 6px; margin-bottom: 8px;">
+              ✓ Vitals within normal limits
+            </div>
+            <div style="padding: 8px; background: var(--muted); border-radius: 6px;">
+              Continue current monitoring protocol
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+</body>
+</html>
