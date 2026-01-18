@@ -1,22 +1,18 @@
-
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import traceback
 import os
 import sys
 
+# Get the directory where app.py is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
-
 sys.path.insert(0, BASE_DIR)
 
 from predict import predict_single
 
-app = Flask(
-    __name__,
-    static_folder=os.path.join(ROOT_DIR, "static"),
-    template_folder=os.path.join(ROOT_DIR, "templates")
-)
+# Simplifed initialization: 
+# Since folders are now inside ml_service, Flask finds them automatically
+app = Flask(__name__)
 
 CORS(app)
 
@@ -50,7 +46,6 @@ def predict():
             "trace": traceback.format_exc()
         }), 500
 
-
-
+# Debugging prints to verify the new paths on Render
 print(f"Static folder path: {app.static_folder}")
 print(f"Template folder path: {app.template_folder}")
