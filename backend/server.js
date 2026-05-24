@@ -1,3 +1,5 @@
+
+
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -7,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_PATIENT, SEQ_LEN, normalizeStreamVitals, normalizeVitalSnapshot } from "./defaults.js";
 import { classifyRisk, combineRiskLevels, interpolationFallback, notReadyLstm, ruleBasedFallback } from "./fallbacks.js";
 import { MlBridgeClient } from "./mlBridgeClient.js";
-import { sequenceManager } from "./sequenceBuffer.js";
+import { sequenceManager, WINDOW_REQUIRED_MS } from "./sequenceBuffer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,48 +119,71 @@ async function serveStatic(req, reqUrl, res) {
   await serveFile(req, res, filePath);
 }
 
+// MODIFIED: added console.log for XGBoost prediction output
 async function predictCurrent(rawVitals) {
   try {
-    return await mlBridge.request("predict_current", { input: rawVitals });
+    const prediction = await mlBridge.request("predict_current", { input: rawVitals });
+    console.log("[XGBoost prediction]", JSON.stringify(prediction, null, 2));
+    return prediction;
   } catch (error) {
     console.warn(`[node-backend] ML bridge current prediction failed: ${error.message}`);
     return ruleBasedFallback(rawVitals);
   }
 }
 
+// MODIFIED: added console.log for LSTM prediction output
 async function predictTemporal(history, currentXgbProbability, patientId) {
-  if (history.length < SEQ_LEN) {
-    return notReadyLstm(currentXgbProbability, history.length);
+  const sequenceLength = sequenceManager.sequenceLength(patientId);
+  const windowMs = sequenceManager.windowSpanMs(patientId);
+  // Floor to nearest 100ms to avoid floating-point precision stuck at e.g. 298.9s
+  const windowMsFloored = Math.floor(windowMs / 100) * 100;
+
+  // Require both enough real rows AND enough elapsed time.
+  if (sequenceLength < SEQ_LEN || windowMsFloored < WINDOW_REQUIRED_MS) {
+    return notReadyLstm(currentXgbProbability, sequenceLength, windowMs);
   }
 
   try {
-    return await mlBridge.request("predict_lstm", {
+    const prediction = await mlBridge.request("predict_lstm", {
       history,
       current_xgb_prob: currentXgbProbability,
       patient_id: patientId
     });
+    return prediction;
   } catch (error) {
     console.warn(`[node-backend] ML bridge temporal prediction failed: ${error.message}`);
-    return interpolationFallback(history, currentXgbProbability, history.length);
+    return interpolationFallback(history, currentXgbProbability, sequenceLength);
   }
 }
 
 function buildEnsemblePrediction(xgbResult, lstmResult) {
   const parsedXgbProbability = Number(xgbResult?.risk_probability);
-  const parsedLstmProbability = Number(lstmResult?.future_risk_probability);
   const xgbProbability = Number.isFinite(parsedXgbProbability) ? parsedXgbProbability : 0;
-  const lstmProbability = Number.isFinite(parsedLstmProbability) ? parsedLstmProbability : xgbProbability;
-  const probability = Math.min(1, Math.max(0, (xgbProbability + lstmProbability) / 2));
+
+  // Only include LSTM in the ensemble when it is ready and returned a valid probability.
+  const lstmReady = lstmResult?.ready === true;
+  const parsedLstmProbability = lstmReady ? Number(lstmResult?.future_risk_probability) : NaN;
+  const lstmProbability = Number.isFinite(parsedLstmProbability) ? parsedLstmProbability : null;
+
+  let probability, weights, modelName;
+
+  if (lstmProbability !== null) {
+    probability = Math.min(1, Math.max(0, (xgbProbability + lstmProbability) / 2));
+    weights = { xgb: 0.5, lstm: 0.5 };
+    modelName = "equal-weight-ensemble";
+  } else {
+    // LSTM pending — report XGBoost result only
+    probability = xgbProbability;
+    weights = { xgb: 1.0, lstm: 0.0 };
+    modelName = "xgb-only (lstm-pending)";
+  }
 
   return {
     risk_probability: Number(probability.toFixed(4)),
     risk_level: classifyRisk(probability),
     risk_score_pct: Number((probability * 100).toFixed(2)),
-    model: "equal-weight-ensemble",
-    weights: {
-      xgb: 0.5,
-      lstm: 0.5
-    }
+    model: modelName,
+    weights
   };
 }
 
@@ -205,9 +230,18 @@ async function handlePredictTemporal(req, res) {
   const history = sequenceManager.getWindow(patientId);
 
   const prediction = await predictTemporal(history, currentProbability, patientId);
-  sendJson(res, 200, { success: true, prediction });
+  const windowSeconds = Number((sequenceManager.windowSpanMs(patientId) / 1000).toFixed(1));
+  sendJson(res, 200, {
+    success: true,
+    prediction: {
+      ...prediction,
+      window_seconds: windowSeconds,
+      window_required_seconds: 300
+    }
+  });
 }
 
+// MODIFIED: added console.log for combined ensemble output
 async function handlePredictCombined(req, res) {
   const rawBody = await readJsonBody(req);
   const patientId = rawBody.patient_id || DEFAULT_PATIENT;
@@ -222,14 +256,26 @@ async function handlePredictCombined(req, res) {
   });
   const history = sequenceManager.getWindow(patientId);
   const lstmResult = await predictTemporal(history, currentProbability, patientId);
-  const ensembleResult = buildEnsemblePrediction(xgbResult, lstmResult);
+  const windowSeconds = Number((sequenceManager.windowSpanMs(patientId) / 1000).toFixed(1));
+  const lstmWithWindow = {
+    ...lstmResult,
+    window_seconds: windowSeconds,
+    window_required_seconds: 300
+  };
+  const ensembleResult = buildEnsemblePrediction(xgbResult, lstmWithWindow);
+
+  // Log combined results
+  console.log("=== Combined Prediction ===");
+  console.log("XGB:", xgbResult);
+  console.log("LSTM:", lstmWithWindow);
+  console.log("Ensemble:", ensembleResult);
 
   sendJson(res, 200, {
     success: true,
     patient_id: patientId,
     prediction: {
       xgb: xgbResult,
-      lstm: lstmResult,
+      lstm: lstmWithWindow,
       ensemble: ensembleResult,
       shap_drivers: xgbResult.risk_drivers || []
     }

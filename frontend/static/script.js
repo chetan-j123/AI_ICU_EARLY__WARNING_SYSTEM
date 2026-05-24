@@ -22,7 +22,7 @@ if (mobileToggle) {
     if (responsiveState.isMobile && responsiveState.sidebarOpen) {
       const sidebar = document.getElementById('sidebar');
       const toggleBtn = document.getElementById('mobileToggle');
-      if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+      if (sidebar && toggleBtn && !sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
         closeSidebar();
       }
     }
@@ -36,11 +36,12 @@ function checkViewport() {
   
   // Update sidebar state
 const sidebar = document.getElementById('sidebar');
-if (!sidebar) return;
-if (responsiveState.isMobile && !responsiveState.sidebarOpen) {
-  sidebar.classList.remove('active');
-} else if (!responsiveState.isMobile) {
-  sidebar.classList.add('active');
+if (sidebar) {
+  if (responsiveState.isMobile && !responsiveState.sidebarOpen) {
+    sidebar.classList.remove('active');
+  } else if (!responsiveState.isMobile) {
+    sidebar.classList.add('active');
+  }
 }
 
   
@@ -56,18 +57,31 @@ function handleResize() {
 
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
   responsiveState.sidebarOpen = !responsiveState.sidebarOpen;
   sidebar.classList.toggle('active', responsiveState.sidebarOpen);
 }
 
 function closeSidebar() {
   const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
   responsiveState.sidebarOpen = false;
   sidebar.classList.remove('active');
 }
 
 function adjustWaveformHeights() {
   const containers = document.querySelectorAll('.waveform-container');
+  const singleBedDesktop = document.querySelector('.single-bed-layout') &&
+    !responsiveState.isMobile &&
+    !responsiveState.isTablet;
+
+  if (singleBedDesktop) {
+    containers.forEach(container => {
+      container.style.height = '';
+    });
+    return;
+  }
+
   const baseHeight = responsiveState.isMobile ? 60 : 
                     responsiveState.isTablet ? 70 : 90;
   
@@ -90,8 +104,8 @@ function adjustGaugeSize() {
       svg.setAttribute('width', isMini ? '140' : '250');
       svg.setAttribute('height', isMini ? '92' : '145');
     } else {
-      svg.setAttribute('width', isMini ? '150' : '280');
-      svg.setAttribute('height', isMini ? '96' : '160');
+      svg.setAttribute('width', isMini ? '132' : '248');
+      svg.setAttribute('height', isMini ? '84' : '138');
     }
   });
 
@@ -211,12 +225,7 @@ let state = {
 
 // Sample patients
 const patients = [
-  { id: 'ICU-2024-0841', bed: 'Bed 1', age: 72, gender: 'M', hr: 88, spo2: 94, risk: 35, level: 'BORDERLINE' },
-  { id: 'ICU-2024-0842', bed: 'Bed 2', age: 45, gender: 'F', hr: 72, spo2: 98, risk: 15, level: 'STABLE' },
   { id: 'ICU-2024-0843', bed: 'Bed 3', age: 81, gender: 'M', hr: 105, spo2: 89, risk: 65, level: 'CRITICAL' },
-  { id: 'ICU-2024-0844', bed: 'Bed 4', age: 58, gender: 'F', hr: 78, spo2: 96, risk: 20, level: 'STABLE' },
-  { id: 'ICU-2024-0845', bed: 'Bed 5', age: 67, gender: 'M', hr: 92, spo2: 92, risk: 40, level: 'BORDERLINE' },
-  { id: 'ICU-2024-0846', bed: 'Bed 6', age: 34, gender: 'F', hr: 145, spo2: 85, risk: 75, level: 'CRITICAL' },
 ];
 
 // Medications
@@ -244,7 +253,12 @@ let heartbeatInterval = null;
 const canvasReferences = {};
 
 function resizeCanvases() {
-  const canvases = ['ecgCanvas', 'plethCanvas', 'respCanvas', 'abpCanvas', 'cvpCanvas', 'papCanvas', 'icpCanvas', 'co2Canvas'];
+  const canvases = [
+    'ecgCanvas', 'plethCanvas', 'respCanvas', 'abpCanvas',
+    'cvpCanvas', 'papCanvas', 'icpCanvas', 'co2Canvas',
+    'mapCanvas', 'tempCanvas', 'lactateCanvas', 'creatinineCanvas',
+    'wbcCanvas', 'hgbCanvas', 'glucoseCanvas', 'potassiumCanvas'
+  ];
   
   canvases.forEach(id => {
     const canvas = document.getElementById(id);
@@ -326,6 +340,7 @@ function getRiskClassFromLevel(level) {
 
 function formatRiskPercentFromProbability(probability) {
   const pct = Math.max(0, Math.min(100, (probability || 0) * 100));
+  if (pct === 0) return '0.0%';
   if (pct > 0 && pct < 1) return `${pct.toFixed(2)}%`;
   if (pct > 0 && pct < 10) return `${pct.toFixed(1)}%`;
   return `${Math.round(pct)}%`;
@@ -341,6 +356,7 @@ function formatRiskPercentFromScore(score) {
 function buildCurrentVitalsPayload(extra = {}) {
   return {
     patient_id: state.activePatientId,
+    timestamp: Date.now(),
     heart_rate: state.vitals.heartRate,
     spo2_pct: state.vitals.spO2,
     systolic_bp: state.vitals.systolicBP,
@@ -368,11 +384,15 @@ function buildCurrentVitalsPayload(extra = {}) {
 
 function getPredictionProbabilities(prediction) {
   const parsedXgb = Number(prediction?.xgb?.risk_probability);
-  const parsedLstm = Number(prediction?.lstm?.future_risk_probability);
-  const parsedEnsemble = Number(prediction?.ensemble?.risk_probability);
   const xgb = Number.isFinite(parsedXgb) ? parsedXgb : 0;
-  const lstm = Number.isFinite(parsedLstm) ? parsedLstm : xgb;
-  const ensemble = Number.isFinite(parsedEnsemble) ? parsedEnsemble : ((xgb + lstm) / 2);
+
+  // Only use LSTM probability when it is actually ready
+  const lstmReady = prediction?.lstm?.ready === true;
+  const parsedLstm = lstmReady ? Number(prediction?.lstm?.future_risk_probability) : NaN;
+  const lstm = Number.isFinite(parsedLstm) ? parsedLstm : null;
+
+  const parsedEnsemble = Number(prediction?.ensemble?.risk_probability);
+  const ensemble = Number.isFinite(parsedEnsemble) ? parsedEnsemble : xgb;
   return { xgb, lstm, ensemble };
 }
 
@@ -381,7 +401,7 @@ function applyCombinedPrediction(prediction) {
   const ensembleLevel = prediction?.ensemble?.risk_level || getRiskLevelFromProbability(ensemble);
 
   state.mlProbabilities.xgb = xgb;
-  state.mlProbabilities.lstm = lstm;
+  state.mlProbabilities.lstm = lstm !== null ? lstm : 0;
   state.mlProbabilities.final = ensemble;
   state.riskScore = Math.min(100, Math.max(0, ensemble * 100));
   state.riskLevel = ensembleLevel;
@@ -467,12 +487,28 @@ function updateLSTMPanel(prediction) {
 
   if (!futureEl) return;
 
-  const prob = prediction.future_risk_probability || 0;
-  const pct = (prob * 100).toFixed(1);
+  const isReady = prediction.ready === true;
+  const parsedProb = Number(prediction.future_risk_probability);
+  const prob = isReady && Number.isFinite(parsedProb) ? parsedProb : null;
   const trend = prediction.trend || 'STABLE';
-  const seqLen = prediction.sequence_length || 0;
-  const seqRequired = prediction.sequence_required || 12;
+  const windowSeconds = Number(prediction.window_seconds) || 0;
+  const windowRequired = Number(prediction.window_required_seconds) || 300;
 
+  if (!isReady || prob === null) {
+    // LSTM pending — show timer, blank out risk value
+    futureEl.textContent = '—';
+    futureEl.style.color = 'var(--vital-warning)';
+    trendEl.textContent = '—';
+    trendEl.style.color = 'var(--vital-warning)';
+    if (statusEl) {
+      const secDone = Math.min(windowSeconds, windowRequired).toFixed(0);
+      statusEl.textContent = `LSTM pending: ${secDone}s / ${windowRequired}s`;
+      statusEl.style.color = 'var(--vital-warning)';
+    }
+    return;
+  }
+
+  const pct = prob > 0 && prob < 0.001 ? '<0.1' : (prob * 100).toFixed(1);
   futureEl.textContent = pct + '%';
   const color = prob >= 0.55 ? 'var(--vital-critical)' :
                 prob >= 0.3  ? 'var(--vital-warning)' : 'var(--vital-stable)';
@@ -489,10 +525,8 @@ function updateLSTMPanel(prediction) {
     state.trajectory = [...past, ...future];
   }
 
-  if (seqLen < seqRequired) {
-    statusEl.textContent = `Buffering sequence: ${seqLen}/${seqRequired} timesteps`;
-  } else {
-    statusEl.textContent = `LSTM active • Confidence: ${((prediction.confidence || 0.85) * 100).toFixed(0)}%`;
+  if (statusEl) {
+    statusEl.textContent = `LSTM active — 5-min window — Confidence: ${((prediction.confidence || 0.85) * 100).toFixed(0)}%`;
     statusEl.style.color = 'var(--vital-stable)';
   }
 }
@@ -699,7 +733,15 @@ const waveformOffsets = {
   cvp: 0,
   pap: 0,
   icp: 0,
-  co2: 0
+  co2: 0,
+  map: 0,
+  temp: 0,
+  lactate: 0,
+  creatinine: 0,
+  wbc: 0,
+  hgb: 0,
+  glucose: 0,
+  potassium: 0
 };
 
 function startWaveforms() {
@@ -757,6 +799,38 @@ function startWaveforms() {
         case 'co2Canvas':
           drawCO2(ctx, w, h, waveformOffsets.co2);
           waveformOffsets.co2 += 1;
+          break;
+        case 'mapCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.map, getMeanArterialPressure(), 40, 140, 'hsl(280, 100%, 65%)', 'saw');
+          waveformOffsets.map += 0.9;
+          break;
+        case 'tempCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.temp, state.vitals.temperature, 34, 42, 'hsl(45, 100%, 55%)', 'slow');
+          waveformOffsets.temp += 0.35;
+          break;
+        case 'lactateCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.lactate, state.labs.lactate, 0, 8, 'hsl(0, 85%, 60%)', 'slow');
+          waveformOffsets.lactate += 0.45;
+          break;
+        case 'creatinineCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.creatinine, state.labs.creatinine, 0, 5, 'hsl(200, 100%, 60%)', 'slow');
+          waveformOffsets.creatinine += 0.42;
+          break;
+        case 'wbcCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.wbc, state.labs.wbc, 0, 25, 'hsl(190, 100%, 50%)', 'stepped');
+          waveformOffsets.wbc += 0.5;
+          break;
+        case 'hgbCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.hgb, state.labs.hemoglobin, 5, 18, 'hsl(330, 100%, 65%)', 'slow');
+          waveformOffsets.hgb += 0.36;
+          break;
+        case 'glucoseCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.glucose, state.labs.glucose, 60, 220, 'hsl(120, 100%, 45%)', 'stepped');
+          waveformOffsets.glucose += 0.55;
+          break;
+        case 'potassiumCanvas':
+          drawTrendWave(ctx, w, h, waveformOffsets.potassium, state.labs.potassium, 2.5, 6.5, 'hsl(55, 100%, 50%)', 'slow');
+          waveformOffsets.potassium += 0.38;
           break;
       }
     }
@@ -1065,6 +1139,47 @@ function drawCO2(ctx, w, h, offset) {
   ctx.shadowBlur = 0;
 }
 
+function getMeanArterialPressure() {
+  const v = state.vitals;
+  return Math.round((v.systolicBP + 2 * v.diastolicBP) / 3);
+}
+
+function drawTrendWave(ctx, w, h, offset, value, min, max, color, mode = 'slow') {
+  ctx.fillStyle = 'rgba(10, 12, 16, 0.3)';
+  ctx.fillRect(0, 0, w, h);
+  drawGrid(ctx, w, h);
+
+  const range = Math.max(1e-6, max - min);
+  const normalized = Math.max(0.05, Math.min(0.95, (value - min) / range));
+  const centerY = h - 8 - normalized * (h - 16);
+  const amplitude = Math.max(4, h * 0.12);
+
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+
+  for (let x = 0; x < w; x++) {
+    const t = (x + offset) / 28;
+    let wave;
+    if (mode === 'saw') {
+      const phase = ((x + offset) % 48) / 48;
+      wave = phase < 0.18 ? -0.9 + phase * 8 : 0.65 - (phase - 0.18) * 1.1;
+    } else if (mode === 'stepped') {
+      wave = Math.sin(t) * 0.35 + (Math.sin(t / 2) > 0 ? 0.35 : -0.15);
+    } else {
+      wave = Math.sin(t) * 0.65 + Math.sin(t / 3) * 0.25;
+    }
+
+    const y = Math.max(6, Math.min(h - 6, centerY + wave * amplitude));
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
 function drawGrid(ctx, w, h) {
   ctx.strokeStyle = 'rgba(100, 116, 139, 0.1)';
   ctx.lineWidth = 0.5;
@@ -1084,7 +1199,7 @@ function drawGrid(ctx, w, h) {
 
 // ========== SIMULATION ==========
 let simulationTick = 0;
-const ACTIVE_MODEL_PREDICTION_INTERVAL_MS = 2000;
+const ACTIVE_MODEL_PREDICTION_INTERVAL_MS = 1000;
 
 function startSimulation() {
   setInterval(() => {
@@ -1124,7 +1239,7 @@ async function streamVitalsToBackend() {
     // Silent fail — LSTM buffer update is best-effort
   }
 }
-
+/*
 function updateVitals() {
   const v = state.vitals;
   v.heartRate = clamp(v.heartRate + (Math.random() - 0.5) * 4, 40, 180);
@@ -1159,13 +1274,163 @@ function updateVitals() {
   });
   if (state.vitalHistory.length > 120) state.vitalHistory.shift();
 }
+*/
+state.phase = "NORMAL"; // NORMAL | MEDIUM | CRITICAL
+state.phaseStartTime = Date.now();
+
+function updatePhase() {
+  const elapsed = (Date.now() - state.phaseStartTime) / 1000;
+
+  // 🔁 CHANGE: 100s → 15s
+  if (elapsed > 15) {
+    if (state.phase === "NORMAL") {
+      state.phase = "MEDIUM";
+    } 
+    else if (state.phase === "MEDIUM") {
+      state.phase = "CRITICAL";
+    } 
+    else {
+      state.phase = "NORMAL"; // loop back
+    }
+
+    state.phaseStartTime = Date.now();
+  }
+}
+
+
+// simple gaussian noise
+function randn() {
+  return (Math.random() + Math.random() + Math.random() + Math.random() - 2);
+}
+
+// spike helper
+function spike(prob, mag) {
+  return Math.random() < prob ? (Math.random() - 0.5) * mag : 0;
+}
+
+
+function updateVitals() {
+  updatePhase();
+
+  const v = state.vitals;
+
+  let noise, spikeProb, spikeMag;
+
+  // --- PHASE CONFIG ---
+  if (state.phase === "NORMAL") {
+    noise = 0.8;
+    spikeProb = 0.01;
+    spikeMag = 5;
+  }
+
+  else if (state.phase === "MEDIUM") {
+    noise = 1.5;
+    spikeProb = 0.04;
+    spikeMag = 12;
+  }
+
+  else { // CRITICAL
+    noise = 2.5;
+    spikeProb = 0.10;
+    spikeMag = 25;
+  }
+
+  // --- DRIFT ---
+  let hrDrift = 0;
+  let spo2Drift = 0;
+  let rrDrift = 0;
+  let bpDrift = 0;
+  let tempDrift = 0;
+
+  if (state.phase === "NORMAL") {
+    hrDrift = 0.02;
+    spo2Drift = -0.01;
+    rrDrift = 0.01;
+    bpDrift = 0;
+    tempDrift = 0.005;
+  }
+
+  else if (state.phase === "MEDIUM") {
+    hrDrift = 0.08;
+    spo2Drift = -0.05;
+    rrDrift = 0.06;
+    bpDrift = -0.06;
+    tempDrift = 0.02;
+  }
+
+  else { // CRITICAL
+    hrDrift = 0.15;
+    spo2Drift = -0.12;
+    rrDrift = 0.12;
+    bpDrift = -0.15;
+    tempDrift = 0.04;
+  }
+
+  // --- HEART RATE ---
+  v.heartRate = clamp(
+    v.heartRate + hrDrift + randn() * noise + spike(spikeProb, spikeMag),
+    40, 180
+  );
+
+  // --- SPO2 ---
+  v.spO2 = clamp(
+    v.spO2 + spo2Drift + randn() * (noise * 0.3) - spike(spikeProb, spikeMag * 0.3),
+    70, 100
+  );
+
+  // --- RESPIRATORY RATE ---
+  v.respiratoryRate = clamp(
+    v.respiratoryRate + rrDrift + randn() * noise + spike(spikeProb, spikeMag * 0.2),
+    6, 40
+  );
+
+  // --- BLOOD PRESSURE ---
+  v.systolicBP = clamp(
+    v.systolicBP + bpDrift + randn() * noise - spike(spikeProb, spikeMag),
+    60, 220
+  );
+
+  v.diastolicBP = clamp(
+    v.diastolicBP + bpDrift * 0.7 + randn() * noise - spike(spikeProb, spikeMag * 0.6),
+    40, 140
+  );
+
+  // --- TEMPERATURE ---
+  v.temperature = clamp(
+    v.temperature + tempDrift + randn() * (noise * 0.1) + spike(spikeProb * 0.5, 1.5),
+    34, 42
+  );
+
+  // --- COUPLING ---
+  if (state.phase !== "NORMAL") {
+    if (v.spO2 < 92) v.heartRate += 2;
+    if (v.systolicBP < 90) v.heartRate += 3;
+    if (v.temperature > 38.5) v.heartRate += 2;
+  }
+
+  // --- HISTORY ---
+  state.vitalHistory.push({
+    time: Date.now(),
+    phase: state.phase,
+    hr: v.heartRate,
+    spo2: v.spO2,
+    sbp: v.systolicBP,
+    rr: v.respiratoryRate,
+    temp: v.temperature
+  });
+
+  if (state.vitalHistory.length > 300) {
+    state.vitalHistory.shift();
+  }
+}
+
 
 function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
 // ========== UI UPDATE ==========
 function updateUI() {
   const v = state.vitals;
-  const map = Math.round((v.systolicBP + 2 * v.diastolicBP) / 3);
+  const map = getMeanArterialPressure();
 
   document.getElementById('hrValue').textContent = Math.round(v.heartRate);
   document.getElementById('spo2Value').textContent = Math.round(v.spO2);
@@ -1176,6 +1441,14 @@ function updateUI() {
   document.getElementById('papValue').textContent = `${Math.round(v.papSystolic)}/${Math.round(v.papDiastolic)}`;
   document.getElementById('icpValue').textContent = Math.round(v.icp);
   document.getElementById('co2Value').textContent = Math.round(v.co2);
+  document.getElementById('mapWaveValue').textContent = map;
+  document.getElementById('tempWaveValue').textContent = v.temperature.toFixed(1);
+  document.getElementById('lactateWaveValue').textContent = state.labs.lactate;
+  document.getElementById('creatinineWaveValue').textContent = state.labs.creatinine;
+  document.getElementById('wbcWaveValue').textContent = state.labs.wbc;
+  document.getElementById('hgbWaveValue').textContent = state.labs.hemoglobin;
+  document.getElementById('glucoseWaveValue').textContent = state.labs.glucose;
+  document.getElementById('potassiumWaveValue').textContent = state.labs.potassium;
   
   document.getElementById('hrCardValue').textContent = Math.round(v.heartRate);
   document.getElementById('spo2CardValue').textContent = Math.round(v.spO2);
@@ -1783,6 +2056,7 @@ function syncActivePatientHeader() {
 function renderPatientList() {
   const container = document.getElementById('patientList');
   const bedCount = document.querySelector('.bed-count');
+  if (!container) return;
   if (bedCount) {
     const criticalCount = patients.filter(p => p.level === 'CRITICAL').length;
     const borderlineCount = patients.filter(p => p.level === 'BORDERLINE').length;

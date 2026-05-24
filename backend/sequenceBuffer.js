@@ -1,28 +1,21 @@
 import { SEQ_LEN } from "./defaults.js";
 
-export const LSTM_HISTORY_MS = 5 * 60 * 1000;
-export const ACTIVE_PREDICTION_INTERVAL_MS = 2 * 1000;
+// Keep up to 10 minutes of historical data (600 seconds) to be safe
+export const LSTM_HISTORY_MS = 10 * 60 * 1000; // 600 seconds
+export const ACTIVE_PREDICTION_INTERVAL_MS = 1 * 1000; // match frontend 1-second sends
+// Require 300 seconds of real data before LSTM is ready
+export const WINDOW_REQUIRED_MS = 300 * 1000;
 
 function cloneForModel(row) {
   const { _timestampMs, ...modelRow } = row;
   return { ...modelRow };
 }
 
-function sampleRows(rows, targetLength) {
-  if (rows.length <= targetLength) {
-    return rows;
-  }
-
-  return Array.from({ length: targetLength }, (_, index) => {
-    const sourceIndex = Math.round(index * (rows.length - 1) / (targetLength - 1));
-    return rows[sourceIndex];
-  });
-}
-
 class PatientSequenceBuffer {
   constructor(patientId) {
     this.patientId = patientId;
-    this.capacity = Math.ceil(LSTM_HISTORY_MS / ACTIVE_PREDICTION_INTERVAL_MS) + SEQ_LEN;
+    // Capacity: allow at least 600 entries (600 seconds) plus some margin
+    this.capacity = Math.ceil(LSTM_HISTORY_MS / ACTIVE_PREDICTION_INTERVAL_MS) + SEQ_LEN + 50;
     this.raw = [];
   }
 
@@ -44,17 +37,32 @@ class PatientSequenceBuffer {
     }
   }
 
+  // Returns only real rows — no padding/upsampling.
   getWindow() {
     this.trim();
-    return sampleRows(this.raw, SEQ_LEN).map(cloneForModel);
+    // Return the most recent SEQ_LEN rows of real data
+    const real = this.raw.slice(-SEQ_LEN);
+    return real.map(cloneForModel);
   }
 
   get length() {
-    return this.getWindow().length;
+    this.trim();
+    return this.raw.length;
   }
 
+  // True only when we have ≥ SEQ_LEN REAL rows spanning ≥ WINDOW_REQUIRED_MS.
   ready() {
-    return this.length >= SEQ_LEN;
+    this.trim();
+    if (this.raw.length < SEQ_LEN) return false;
+    const span = this.windowSpanMs();
+    // Compare with tolerance of 10ms
+    return span >= WINDOW_REQUIRED_MS - 10;
+  }
+
+  windowSpanMs() {
+    this.trim();
+    if (this.raw.length < 2) return 0;
+    return this.raw[this.raw.length - 1]._timestampMs - this.raw[0]._timestampMs;
   }
 }
 
@@ -84,6 +92,10 @@ export class SequenceManager {
 
   isReady(patientId) {
     return this.buffers.get(patientId)?.ready() ?? false;
+  }
+
+  windowSpanMs(patientId) {
+    return this.buffers.get(patientId)?.windowSpanMs() ?? 0;
   }
 
   activePatients() {

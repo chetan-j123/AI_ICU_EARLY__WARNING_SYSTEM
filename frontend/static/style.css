@@ -209,6 +209,10 @@ body {
   min-height: calc(100vh - 60px);
 }
 
+.single-bed-layout .sidebar {
+  display: none;
+}
+
 /* Mobile Toggle Button */
 .mobile-toggle {
   display: none;
@@ -303,6 +307,192 @@ body {
   padding: 12px;
   overflow-y: auto;
   min-width: 0;
+}
+
+@media (min-width: 1025px) {
+  body {
+    overflow: hidden;
+  }
+
+  .mobile-toggle {
+    display: none !important;
+  }
+
+  .main-container {
+    height: calc(100vh - 57px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .content {
+    grid-template-columns: minmax(640px, 1.55fr) minmax(320px, 0.78fr) minmax(280px, 0.67fr);
+    gap: 10px;
+    height: 100%;
+    overflow: hidden;
+    padding: 10px;
+  }
+
+  .left-column {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .waveform-container {
+    height: auto;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+
+  .waveform-label {
+    top: 7px;
+    left: 7px;
+    font-size: 8px;
+  }
+
+  .waveform-value {
+    top: 7px;
+    right: 7px;
+    font-size: 14px;
+  }
+
+  .vital-summary-grid,
+  .bp-panel,
+  .audio-panel {
+    display: none !important;
+  }
+
+  .center-column,
+  .right-column {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .center-column {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .right-column {
+    display: grid;
+    grid-template-rows: minmax(0, 1.05fr) auto auto minmax(0, 0.9fr);
+    gap: 8px;
+  }
+
+  .right-column .panel {
+    margin-top: 0 !important;
+  }
+
+  .center-column > .controls {
+    margin-bottom: 0;
+  }
+
+  .tabs-header {
+    margin-bottom: 0;
+  }
+
+  #tab-monitor {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #tab-monitor > .panel:nth-of-type(n+3) {
+    display: none;
+  }
+
+  .panel {
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .panel-title {
+    margin-bottom: 8px;
+  }
+
+  .risk-gauge-container {
+    padding: 4px 8px 6px;
+  }
+
+  .risk-score {
+    font-size: 34px;
+    margin-top: -32px;
+  }
+
+  .risk-meta {
+    margin-top: 8px;
+    gap: 8px;
+  }
+
+  .model-gauge-grid {
+    gap: 8px;
+  }
+
+  .model-gauge-card {
+    padding: 8px;
+  }
+
+  .model-risk-value {
+    font-size: 22px;
+    margin-top: -16px;
+  }
+
+  .shap-panel {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .shap-drivers {
+    gap: 6px;
+  }
+
+  .right-shap-panel {
+    overflow: hidden;
+  }
+
+  .right-shap-panel .shap-title {
+    margin-bottom: 8px;
+  }
+
+  .lstm-forecast-panel {
+    overflow: hidden;
+  }
+
+  .lstm-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 0.75fr;
+    gap: 8px;
+    align-items: end;
+  }
+
+  .mini-label {
+    color: var(--muted-foreground);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .lstm-summary-value {
+    color: var(--vital-stable);
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .lstm-summary-value.secondary {
+    color: var(--muted-foreground);
+    font-size: 13px;
+  }
+
+  .lstm-status {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    margin-top: 8px;
+    font-style: italic;
+  }
 }
 
 /* Panel Styles */

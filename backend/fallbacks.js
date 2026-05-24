@@ -65,40 +65,36 @@ export function makeForecastSeries(currentProbability, futureProbability, steps 
 }
 
 export function interpolationFallback(history = [], currentProbability = 0, sequenceLength = history.length) {
-  const risks = history.slice(-6).map((row) => numeric(row.risk, currentProbability));
-  let futureProbability = currentProbability;
-
-  if (risks.length >= 2) {
-    const trendDelta = risks[risks.length - 1] - risks[0];
-    futureProbability = Math.min(1, Math.max(0, currentProbability + trendDelta * 0.5));
-  }
-
-  const trend = classifyTrend(currentProbability, futureProbability);
-  const forecast = makeForecastSeries(currentProbability, futureProbability);
-
+  // This is a fallback — the real LSTM did not produce a result.
+  // Always return ready:false so the frontend knows to show "LSTM pending"
+  // rather than a misleading zero-risk or linear-decay forecast.
   return {
-    ready: sequenceLength >= SEQ_LEN,
-    future_risk_probability: Number(futureProbability.toFixed(4)),
-    trend,
-    confidence: 0.5,
+    ready: false,
+    future_risk_probability: null,
+    trend: "UNKNOWN",
+    confidence: 0,
     sequence_length: sequenceLength,
     sequence_required: SEQ_LEN,
-    forecast_series: forecast.map((value) => Number(value.toFixed(4))),
-    model: "interpolation-fallback"
+    forecast_series: [],
+    model: "interpolation-fallback",
+    message: "LSTM unavailable — awaiting sufficient temporal data"
   };
 }
 
-export function notReadyLstm(currentProbability, sequenceLength) {
+export function notReadyLstm(currentProbability, sequenceLength, windowMs = 0) {
+  const windowSeconds = Number((windowMs / 1000).toFixed(1));
   return {
     ready: false,
-    future_risk_probability: currentProbability,
+    future_risk_probability: null,
     trend: "STABLE",
     confidence: 0.0,
     sequence_length: sequenceLength,
     sequence_required: SEQ_LEN,
+    window_seconds: windowSeconds,
+    window_required_seconds: 300,
     forecast_series: [],
     model: "LSTM-not-ready",
-    message: `Buffering: ${sequenceLength}/${SEQ_LEN} timesteps`
+    message: `LSTM pending: ${windowSeconds}s / 300s`
   };
 }
 

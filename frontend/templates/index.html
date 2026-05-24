@@ -10,10 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- ✅ Flask static CSS -->
-  <link rel="stylesheet" href="/static/style.css?v=20260523">
+  <link rel="stylesheet" href="/static/style.css?v=20260524c">
 
   <!-- ✅ Flask static JS with defer (safe for DOM access) -->
-  <script src="/static/script.js?v=20260523" defer></script>
+  <script src="/static/script.js?v=20260524c" defer></script>
 </head>
 
 <body>
@@ -34,13 +34,13 @@
         <span id="statusText" class="status-text stable font-mono">STABLE</span>
       </div>
       <div class="patient-info">
-        <span class="patient-id font-mono" id="patientId">ICU-2024-0847</span>
-        <span class="patient-details" id="patientDetails">67y M • Emergency</span>
+        <span class="patient-id font-mono" id="patientId">ICU-2024-0843</span>
+        <span class="patient-details" id="patientDetails">81y M • Emergency</span>
       </div>
       <div style="display: flex; align-items: center; gap: 4px; border-left: 1px solid var(--border); padding-left: 12px;">
         <span style="color: var(--primary);" class="font-mono">MICU</span>
         <span style="margin: 0 4px; color: var(--muted-foreground);">|</span>
-        <span class="font-mono" id="patientBed">Bed 12</span>
+        <span class="font-mono" id="patientBed">Bed 3</span>
       </div>
     </div>
     <div class="header-right">
@@ -66,19 +66,7 @@
   </header>
 
   <!-- Main Container -->
-  <div class="main-container">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <span class="sidebar-title">ICU BEDS</span>
-        <div class="bed-count">
-          <span style="color: var(--vital-critical);">● 2 Critical</span>
-          <span style="color: var(--vital-warning);">● 1 Borderline</span>
-        </div>
-      </div>
-      <div id="patientList"></div>
-    </aside>
-
+  <div class="main-container single-bed-layout">
     <!-- Content -->
     <main class="content">
       <!-- Left Column - Waveforms & Vitals -->
@@ -139,8 +127,56 @@
           <canvas id="co2Canvas"></canvas>
         </div>
 
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pressure);">MAP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pressure);" id="mapWaveValue">93</span>
+          <canvas id="mapCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-warning);">TEMP</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-warning);" id="tempWaveValue">37.1</span>
+          <canvas id="tempCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-critical);">LACTATE</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-critical);" id="lactateWaveValue">1.2</span>
+          <canvas id="lactateCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-cvp);">CREAT</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-cvp);" id="creatinineWaveValue">0.9</span>
+          <canvas id="creatinineCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-oxygen);">WBC</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-oxygen);" id="wbcWaveValue">8.2</span>
+          <canvas id="wbcCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-pap);">HGB</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-pap);" id="hgbWaveValue">13.5</span>
+          <canvas id="hgbCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-stable);">GLUCOSE</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-stable);" id="glucoseWaveValue">112</span>
+          <canvas id="glucoseCanvas"></canvas>
+        </div>
+
+        <div class="waveform-container">
+          <span class="waveform-label" style="color: var(--vital-resp);">K+</span>
+          <span class="waveform-value font-mono" style="color: var(--vital-resp);" id="potassiumWaveValue">4.1</span>
+          <canvas id="potassiumCanvas"></canvas>
+        </div>
+
         <!-- Vital Cards Grid -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+        <div class="vital-summary-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
           <div class="vital-card" id="hrCard">
             <div class="vital-card-header">
               <span class="vital-card-label">❤️ Heart Rate</span>
@@ -180,7 +216,7 @@
         </div>
 
         <!-- Blood Pressure Panel -->
-        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+        <div class="panel bp-panel" style="margin-top: 12px; grid-column: 1 / -1;">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
             <span style="color: var(--vital-pressure);">📈 NIBP</span>
           </div>
@@ -194,7 +230,7 @@
         </div>
 
         <!-- Audio Control -->
-        <div class="panel" style="margin-top: 12px; grid-column: 1 / -1;">
+        <div class="panel audio-panel" style="margin-top: 12px; grid-column: 1 / -1;">
           <div class="controls">
             <button class="control-btn" id="muteBtn" onclick="toggleMute()">
               <span id="muteIcon">🔊</span>
@@ -270,13 +306,6 @@
                 </div>
               </div>
 
-              <div class="shap-panel">
-                <div class="shap-title">SHAP · Top XGBoost Risk Drivers</div>
-                <div id="shapDrivers" class="shap-drivers">
-                  <div class="shap-empty">Waiting for XGBoost risk drivers...</div>
-                </div>
-              </div>
-
               <div id="mlProbabilities" class="model-probability-row">
                 <span>XGBoost: <b id="xgbProb">0.000</b></span>
                 <span>LSTM: <b id="lstmProb">0.000</b></span>
@@ -291,26 +320,6 @@
             <svg width="100%" height="100" id="trajectoryChart"></svg>
           </div>
 
-
-          <!-- LSTM Temporal Forecast Panel -->
-          <div class="panel" style="margin-top: 12px;">
-            <div class="panel-title">🧠 LSTM Temporal Forecast (Next 12h)</div>
-            <div style="display: flex; align-items: center; gap: 12px; padding: 8px 0;">
-              <div style="flex: 1;">
-                <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 4px;">Future Risk</div>
-                <div class="font-mono" id="lstmFutureRisk" style="font-size: 20px; color: var(--vital-stable);">--.--%</div>
-              </div>
-              <div style="flex: 1;">
-                <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 4px;">Trend</div>
-                <div class="font-mono" id="lstmTrend" style="font-size: 14px; color: var(--muted-foreground);">STABLE</div>
-              </div>
-              <div style="flex: 1;">
-                <div style="font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; margin-bottom: 4px;">Horizon</div>
-                <div class="font-mono" style="font-size: 14px;">12h</div>
-              </div>
-            </div>
-            <div id="lstmStatus" style="font-size: 11px; color: var(--muted-foreground); margin-top: 4px; font-style: italic;">Accumulating sequence data...</div>
-          </div>
           <!-- Vital Heatmap -->
           <div class="panel" style="margin-top: 12px;">
             <div class="panel-title">Vital History Heatmap (Last Hour)</div>
@@ -512,6 +521,35 @@
 
       <!-- Right Column - Context -->
       <div class="right-column">
+        <div class="panel right-shap-panel">
+          <div class="panel-title">SHAP Values</div>
+          <div class="shap-panel">
+            <div class="shap-title">Top XGBoost Risk Drivers</div>
+            <div id="shapDrivers" class="shap-drivers">
+              <div class="shap-empty">Waiting for XGBoost risk drivers...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel lstm-forecast-panel">
+          <div class="panel-title">LSTM Temporal Forecast</div>
+          <div class="lstm-summary-grid">
+            <div>
+              <div class="mini-label">Future Risk</div>
+              <div class="font-mono lstm-summary-value" id="lstmFutureRisk">--.--%</div>
+            </div>
+            <div>
+              <div class="mini-label">Trend</div>
+              <div class="font-mono lstm-summary-value secondary" id="lstmTrend">STABLE</div>
+            </div>
+            <div>
+              <div class="mini-label">Horizon</div>
+              <div class="font-mono lstm-summary-value secondary">12h</div>
+            </div>
+          </div>
+          <div id="lstmStatus" class="lstm-status">Accumulating sequence data...</div>
+        </div>
+
         <!--
          <div class="panel">
           <div class="panel-title">Clinical Context</div>

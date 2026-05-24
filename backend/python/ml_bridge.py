@@ -1,10 +1,3 @@
-"""
-Small JSON-lines bridge for Python-native ML artifacts.
-
-The Node backend owns HTTP routes, static serving, request defaults, and
-sequence buffering. This process only loads .pkl/.keras artifacts and returns
-prediction JSON over stdin/stdout.
-"""
 
 from __future__ import annotations
 
@@ -518,25 +511,19 @@ def make_forecast_series(current: float, future: float, steps: int = 6) -> List[
 
 
 def interpolation_fallback(history: List[Dict[str, Any]], current_probability: float, sequence_length: int) -> Dict[str, Any]:
-    risks = [to_float(row.get("risk"), current_probability) for row in history[-6:]]
-    if len(risks) >= 2:
-        trend_delta = risks[-1] - risks[0]
-        future_probability = min(1.0, max(0.0, current_probability + trend_delta * 0.5))
-    else:
-        future_probability = current_probability
-
-    trend = classify_trend(current_probability, future_probability)
-    forecast = make_forecast_series(current_probability, future_probability)
-
+    # This is a fallback — the real LSTM did not produce a result.
+    # Always return ready:False so the frontend shows "LSTM pending" rather than a
+    # misleading zero-risk or linear-decay forecast.
     return {
-        "ready": sequence_length >= SEQ_LEN,
-        "future_risk_probability": round_float(future_probability, 4),
-        "trend": trend,
-        "confidence": 0.5,
+        "ready": False,
+        "future_risk_probability": None,
+        "trend": "UNKNOWN",
+        "confidence": 0,
         "sequence_length": sequence_length,
         "sequence_required": SEQ_LEN,
-        "forecast_series": [round_float(value, 4) for value in forecast],
+        "forecast_series": [],
         "model": "interpolation-fallback",
+        "message": "LSTM unavailable — awaiting sufficient temporal data",
     }
 
 
@@ -637,7 +624,7 @@ def respond(message_id: Any, ok: bool, result: Any = None, error: Optional[str] 
     else:
         payload["error"] = error or "Unknown bridge error"
 
-    print(json.dumps(payload, separators=(",", ":"), allow_nan=False), flush=True)
+    print(json.dumps(payload, separators=(",", ":"), allow_nan=False, default=lambda x: None), flush=True)
 
 
 def main() -> None:
