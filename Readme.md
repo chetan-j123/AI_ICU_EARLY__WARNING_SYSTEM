@@ -1,4 +1,6 @@
 # ICU Vital Sentinel — AI-Powered ICU Early Warning System
+
+visit here 🔗- https://chetandatascience-ai-icu-early-warning-system.hf.space
  
 > **A real-time Intensive Care Unit (ICU) patient monitoring dashboard that fuses live physiological waveforms with a dual-model ML ensemble (XGBoost + LSTM) to predict in-hospital mortality risk and warn clinicians of deterioration before it becomes a crisis.**
  
