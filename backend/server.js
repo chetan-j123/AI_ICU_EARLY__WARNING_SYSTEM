@@ -1,5 +1,3 @@
-
-
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -23,8 +21,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const BODY_LIMIT_BYTES = 1024 * 1024;
 
 const mlBridge = new MlBridgeClient({
-  projectRoot: PROJECT_ROOT,
-  scriptPath: path.join(__dirname, "python", "ml_bridge.py")
+  serviceUrl: process.env.ML_SERVICE_URL
 });
 
 const MIME_TYPES = {
@@ -189,19 +186,19 @@ function buildEnsemblePrediction(xgbResult, lstmResult) {
 
 async function handleHealth(res) {
   try {
-    const bridgeHealth = await mlBridge.request("health", {});
+    const bridgeHealth = await mlBridge.health();
     sendJson(res, 200, {
       status: "ok",
       models_ready: Boolean(bridgeHealth.models_ready),
       version: "2.0.0-node-xgb-lstm",
-      bridge: bridgeHealth
+      ml_service: bridgeHealth
     });
   } catch (error) {
     sendJson(res, 200, {
       status: "ok",
       models_ready: false,
       version: "2.0.0-node-xgb-lstm",
-      bridge: {
+      ml_service: {
         ok: false,
         error: error.message
       }
@@ -265,10 +262,10 @@ async function handlePredictCombined(req, res) {
   const ensembleResult = buildEnsemblePrediction(xgbResult, lstmWithWindow);
 
   // Log combined results
-  console.log("=== Combined Prediction ===");
-  console.log("XGB:", xgbResult);
-  console.log("LSTM:", lstmWithWindow);
-  console.log("Ensemble:", ensembleResult);
+//  console.log("=== Combined Prediction ===");
+  //console.log("XGB:", xgbResult);
+  //console.log("LSTM:", lstmWithWindow);
+  //console.log("Ensemble:", ensembleResult);
 
   sendJson(res, 200, {
     success: true,
@@ -385,6 +382,7 @@ async function handleRequest(req, res) {
       sendJson(res, 200, {
         title: "ICU Early Warning System API",
         version: "2.0.0-node-xgb-lstm",
+        ml_service_url_configured: Boolean(process.env.ML_SERVICE_URL),
         endpoints: [
           "GET /health",
           "POST /predict/current",
@@ -409,5 +407,5 @@ async function handleRequest(req, res) {
 
 createServer(handleRequest).listen(PORT, HOST, () => {
   console.log(`ICU Node backend listening on http://localhost:${PORT}`);
-  console.log(`Serving dashboard from ${INDEX_HTML}`);
+ // console.log(`Serving dashboard from ${INDEX_HTML}`);
 });

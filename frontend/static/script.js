@@ -120,7 +120,7 @@ let state = {
   alertDismissed: false,
   activeTab: 'monitor',
   activePatientId: 'ICU-2024-0843',
-  backendUrl: '',
+  backendUrl: window.ICU_BACKEND_URL || localStorage.getItem('ICU_BACKEND_URL') || '',
   vitals: {
     heartRate: 105,
     spO2: 89,

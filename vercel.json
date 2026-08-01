@@ -1,0 +1,24 @@
+{
+  "public": true,
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/frontend/templates/index.html"
+    },
+    {
+      "source": "/static/:path*",
+      "destination": "/frontend/static/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

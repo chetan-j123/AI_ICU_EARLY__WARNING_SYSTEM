@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Node.js backend for the ICU Early Warning System, with a small Python ML artifact bridge.",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "node --check backend/server.js",
     "start": "node backend/server.js",
