@@ -1,8 +1,4 @@
----
-title: AI ICU Early Warning System
-sdk: docker
----
-
+##check it out 🔗 - https://ai-icu-backend.onrender.com
 # AI ICU Early Warning System
 
 This project now uses a Spring Boot backend as the main web/API server and keeps Python as a dedicated ML inference service for the existing scikit-learn/joblib models.
