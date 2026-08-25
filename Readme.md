@@ -110,6 +110,7 @@ Open:
 http://localhost:7860
 ```
 
+
 If Maven is not installed, install Maven or use any Maven distribution to run the same commands.
 
 ## Run With Docker Compose
@@ -139,3 +140,42 @@ Python ML service environment variables:
 
 The new main backend is Spring Boot. The Python service exists only to preserve validated ML inference behavior with the current model artifacts.
 
+//target is just a folder we can ignore becs use it will crested by the maven build tool for building depeceis and comile proejct making proejct deplyable format kinodff thigs it also reads pom.xml
+///pom.xml is just deoenceies file
+//the ml serviece and thebackend bit have thier spearte doekcerifle which is used containerise the that paricualr fiolder
+//and external dockefile -copomser just used to connect the both dockerfile or can  say run them together 
+//gtignore and gitattrbutes is jusrt github files 
+//backend k andr src e main jav code hota h baceknd ka scr code and resoucres folder conatins the forntedn files java reuires tge frontend file shoudl be also in src folder  src- first braanch java(backend code ) , second brach resources (fronted files) 
+
+
+[Browser] --GET /--> [MainController] --> templates/index.html --> [Browser]
+[Browser] --GET /style.css, /script.js--> static/ folder --> [Browser]
+
+[Browser form submit]
+        │ POST /predict (JSON vitals)
+        ▼
+[MainController.predict()]
+        │ forwards same JSON
+        ▼
+[Python app.py :5001 /predict]
+        │ loads .pkl models, runs prediction
+        ▼
+[MainController receives Python's JSON]
+        │ returns as-is
+        ▼
+[Browser script.js] --> dashboard update ho jaata hai
+
+
+1️⃣ App Start Hone Ka Flow (jab tum java -jar chalate ho)
+java -jar early-warning-system-0.0.1-SNAPSHOT.jar
+        ↓
+Application.java ka main() method chalta hai
+        ↓
+SpringApplication.run(Application.class, args)
+        ↓
+Spring Boot khud-ba-khud:
+  - application.properties padhta hai (port=7860, ml.service.url)
+  - MainController ko detect karta hai (@Controller dekh ke)
+  - Ek embedded web server (Tomcat) start karta hai port 7860 pe
+        ↓
+Server ready: "listening on port 7860"
