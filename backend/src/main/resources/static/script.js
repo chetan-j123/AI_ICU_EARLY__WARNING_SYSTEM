@@ -103,7 +103,7 @@ let state = {
   waveformAudioEnabled: false,
   alertDismissed: false,
   activeTab: 'monitor',
-  activePatientId: 'ICU-2024-0847',
+  activePatientId: 'ICU-2024-0841',
   backendUrl: '',
   vitals: {
     heartRate: 78,
@@ -201,9 +201,8 @@ let state = {
       upstrokeSteepness: 0.7
     }
   },
-  // ========== PHASE-BASED CYCLE STATE (NEW) ==========
-  simPhase: 'normal',           // 'normal' -> 'moderate' -> 'high' -> repeat
-  phaseEndTime: Date.now() + randomDuration()
+  lastPredictionAt: null,
+  predictionStatus: 'pending'
 };
 
 // ========== PHASE HELPER FUNCTIONS (NEW) ==========
@@ -255,14 +254,14 @@ const phaseRanges = {
   }
 };
 
-const phaseOrder = ['normal', 'moderate', 'high'];
+const phaseOrder = ['normal', 'moderate', 'high', 'moderate'];
 
-function advancePhaseIfNeeded() {
-  if (Date.now() >= state.phaseEndTime) {
-    const idx = phaseOrder.indexOf(state.simPhase);
-    state.simPhase = phaseOrder[(idx + 1) % phaseOrder.length];
-    state.phaseEndTime = Date.now() + randomDuration();
-    console.log(`Phase changed -> ${state.simPhase}`);
+function advancePhaseIfNeeded(patientState) {
+  if (Date.now() >= patientState.phaseEndTime) {
+    patientState.phaseIndex = (patientState.phaseIndex + 1) % phaseOrder.length;
+    patientState.simPhase = phaseOrder[patientState.phaseIndex];
+    patientState.phaseEndTime = Date.now() + randomDuration();
+    console.log(`${patientState.bed} phase changed -> ${patientState.simPhase}`);
   }
 }
 
@@ -282,6 +281,146 @@ const patients = [
   { id: 'ICU-2024-0845', bed: 'Bed 5', age: 67, gender: 'M', hr: 92, spo2: 92, risk: 40, level: 'BORDERLINE' },
   { id: 'ICU-2024-0846', bed: 'Bed 6', age: 34, gender: 'F', hr: 145, spo2: 85, risk: 75, level: 'CRITICAL' },
 ];
+
+const patientStates = {};
+let simulationTimerId = null;
+let predictionSchedulerRunning = false;
+let nextPredictionIndex = 0;
+
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function riskLevelFromScore(score) {
+  if (score >= 55) return 'CRITICAL';
+  if (score >= 30) return 'BORDERLINE';
+  return 'STABLE';
+}
+
+function phaseFromLevel(level) {
+  if (level === 'CRITICAL') return 'high';
+  if (level === 'BORDERLINE') return 'moderate';
+  return 'normal';
+}
+
+function createTrajectory(patient, index) {
+  const now = Date.now();
+  const vitals = {
+    heartRate: patient.hr,
+    spO2: patient.spo2,
+    respiratoryRate: patient.level === 'CRITICAL' ? 30 : patient.level === 'BORDERLINE' ? 22 : 16,
+    systolicBP: patient.level === 'CRITICAL' ? 82 : patient.level === 'BORDERLINE' ? 98 : 122,
+    diastolicBP: patient.level === 'CRITICAL' ? 46 : patient.level === 'BORDERLINE' ? 58 : 78,
+    temperature: patient.level === 'CRITICAL' ? 39.1 : patient.level === 'BORDERLINE' ? 37.9 : 37.1,
+    cvp: patient.level === 'CRITICAL' ? 16 : patient.level === 'BORDERLINE' ? 10 : 7,
+    papSystolic: patient.level === 'CRITICAL' ? 39 : patient.level === 'BORDERLINE' ? 30 : 24,
+    papDiastolic: patient.level === 'CRITICAL' ? 19 : patient.level === 'BORDERLINE' ? 14 : 10,
+    icp: patient.level === 'CRITICAL' ? 22 : patient.level === 'BORDERLINE' ? 16 : 12,
+    co2: patient.level === 'CRITICAL' ? 53 : patient.level === 'BORDERLINE' ? 45 : 38
+  };
+  const phase = phaseFromLevel(patient.level);
+  const phaseIndex = Math.max(0, phaseOrder.indexOf(phase));
+  return {
+    id: patient.id,
+    bed: patient.bed,
+    age: patient.age,
+    gender: patient.gender,
+    vitals,
+    labs: cloneData(state.labs),
+    additionalParams: {
+      ...cloneData(state.additionalParams),
+      age: patient.age,
+      gender: patient.gender,
+      sepsis_risk_score: patient.level === 'CRITICAL' ? 8 : patient.level === 'BORDERLINE' ? 4 : 1,
+      oxygen_flow: patient.level === 'CRITICAL' ? 8 : patient.level === 'BORDERLINE' ? 4 : 2,
+      oxygen_device: patient.level === 'CRITICAL' ? 'ventilator' : 'nasal_cannula',
+      nurse_alert: patient.level === 'CRITICAL' ? 1 : 0,
+      comorbidity_index: patient.age > 70 ? 3 : patient.age > 55 ? 1 : 0
+    },
+    scores: cloneData(state.scores),
+    riskScore: patient.risk,
+    riskLevel: patient.level,
+    mlProbabilities: cloneData(state.mlProbabilities),
+    vitalHistory: [],
+    trajectory: [],
+    simPhase: phase,
+    phaseIndex,
+    phaseEndTime: now + (12000 + index * 2500 + Math.random() * 6000),
+    lastUpdated: now,
+    lastPredictionAt: null,
+    predictionStatus: 'pending'
+  };
+}
+
+function initializePatientStates() {
+  patients.forEach((patient, index) => {
+    patientStates[patient.id] = createTrajectory(patient, index);
+    initializeHistory(patientStates[patient.id]);
+  });
+  copyPatientStateToView(state.activePatientId);
+}
+
+function getActivePatientState() {
+  return patientStates[state.activePatientId];
+}
+
+function copyPatientStateToView(patientId) {
+  const patientState = patientStates[patientId];
+  if (!patientState) return;
+  state.activePatientId = patientId;
+  state.vitals = patientState.vitals;
+  state.labs = patientState.labs;
+  state.additionalParams = patientState.additionalParams;
+  state.scores = patientState.scores;
+  state.riskScore = patientState.riskScore;
+  state.riskLevel = patientState.riskLevel;
+  state.mlProbabilities = patientState.mlProbabilities;
+  state.vitalHistory = patientState.vitalHistory;
+  state.trajectory = patientState.trajectory;
+  state.lastPredictionAt = patientState.lastPredictionAt;
+  state.predictionStatus = patientState.predictionStatus;
+  updateActivePatientDetails(patientState);
+}
+
+function updateSidebarPatientSnapshot(patientState) {
+  const patient = patients.find(p => p.id === patientState.id);
+  if (!patient) return;
+  patient.hr = Math.round(patientState.vitals.heartRate);
+  patient.spo2 = Math.round(patientState.vitals.spO2);
+  patient.risk = Math.round(patientState.riskScore);
+  patient.level = patientState.riskLevel;
+}
+
+function updateActivePatientDetails(patientState) {
+  const patientId = document.getElementById('patientId');
+  if (!patientId) return;
+
+  patientId.textContent = patientState.id;
+  document.getElementById('patientDetails').textContent = `${patientState.age}y ${patientState.gender} • Emergency`;
+  document.getElementById('patientBed').textContent = patientState.bed;
+
+  document.getElementById('inputAge').value = patientState.additionalParams.age;
+  document.getElementById('inputGender').value = patientState.additionalParams.gender;
+  document.getElementById('inputHR').value = Math.round(patientState.vitals.heartRate);
+  document.getElementById('inputSpO2').value = Math.round(patientState.vitals.spO2);
+  document.getElementById('inputSBP').value = Math.round(patientState.vitals.systolicBP);
+  document.getElementById('inputDBP').value = Math.round(patientState.vitals.diastolicBP);
+  document.getElementById('inputTemp').value = patientState.vitals.temperature.toFixed(1);
+  document.getElementById('inputRR').value = Math.round(patientState.vitals.respiratoryRate);
+  document.getElementById('inputLactate').value = patientState.labs.lactate;
+  document.getElementById('inputCreatinine').value = patientState.labs.creatinine;
+  document.getElementById('inputWBC').value = patientState.labs.wbc;
+  document.getElementById('inputHGB').value = patientState.labs.hemoglobin;
+  document.getElementById('inputCRP').value = patientState.labs.crp;
+  document.getElementById('inputO2Flow').value = patientState.additionalParams.oxygen_flow;
+  document.getElementById('inputO2Device').value = patientState.additionalParams.oxygen_device;
+  document.getElementById('inputMobility').value = patientState.additionalParams.mobility_score;
+  document.getElementById('inputNurseAlert').value = patientState.additionalParams.nurse_alert;
+  document.getElementById('inputSepsisRisk').value = patientState.additionalParams.sepsis_risk_score;
+  document.getElementById('inputComorbidity').value = patientState.additionalParams.comorbidity_index;
+  document.getElementById('inputHours').value = patientState.additionalParams.hour_from_admission;
+  document.getElementById('inputAdmissionType').value = patientState.additionalParams.admission_type;
+}
 
 // Medications
 const medications = [
@@ -376,29 +515,38 @@ async function testBackendConnection() {
 }
 
 // ========== ML PREDICTION ==========
-async function getMLPrediction() {
+function buildPredictionInput(patientState) {
+  return {
+    heart_rate: patientState.vitals.heartRate,
+    spo2_pct: patientState.vitals.spO2,
+    systolic_bp: patientState.vitals.systolicBP,
+    diastolic_bp: patientState.vitals.diastolicBP,
+    respiratory_rate: patientState.vitals.respiratoryRate,
+    temperature_c: patientState.vitals.temperature,
+    oxygen_flow: patientState.additionalParams.oxygen_flow,
+    mobility_score: patientState.additionalParams.mobility_score,
+    nurse_alert: patientState.additionalParams.nurse_alert,
+    wbc_count: patientState.labs.wbc * 1000,
+    lactate: patientState.labs.lactate,
+    creatinine: patientState.labs.creatinine,
+    crp_level: patientState.labs.crp,
+    hemoglobin: patientState.labs.hemoglobin,
+    sepsis_risk_score: patientState.additionalParams.sepsis_risk_score,
+    age: patientState.additionalParams.age,
+    comorbidity_index: patientState.additionalParams.comorbidity_index,
+    hour_from_admission: patientState.additionalParams.hour_from_admission,
+    gender: patientState.additionalParams.gender,
+    oxygen_device: patientState.additionalParams.oxygen_device,
+    admission_type: patientState.additionalParams.admission_type
+  };
+}
+
+async function getMLPrediction(patientId = state.activePatientId) {
+  const patientState = patientStates[patientId];
+  if (!patientState) return false;
   const inputData = {
-    heart_rate: state.vitals.heartRate,
-    spo2_pct: state.vitals.spO2,
-    systolic_bp: state.vitals.systolicBP,
-    diastolic_bp: state.vitals.diastolicBP,
-    respiratory_rate: state.vitals.respiratoryRate,
-    temperature_c: state.vitals.temperature,
-    oxygen_flow: state.additionalParams.oxygen_flow,
-    mobility_score: state.additionalParams.mobility_score,
-    nurse_alert: state.additionalParams.nurse_alert,
-    wbc_count: state.labs.wbc * 1000,
-    lactate: state.labs.lactate,
-    creatinine: state.labs.creatinine,
-    crp_level: state.labs.crp,
-    hemoglobin: state.labs.hemoglobin,
-    sepsis_risk_score: state.additionalParams.sepsis_risk_score,
-    age: state.additionalParams.age,
-    comorbidity_index: state.additionalParams.comorbidity_index,
-    hour_from_admission: state.additionalParams.hour_from_admission,
-    gender: state.additionalParams.gender,
-    oxygen_device: state.additionalParams.oxygen_device,
-    admission_type: state.additionalParams.admission_type
+    ...buildPredictionInput(patientState),
+    bed_id: patientId
   };
 
   try {
@@ -419,39 +567,48 @@ async function getMLPrediction() {
     if (result.success) {
       const prediction = result.prediction;
 
-      state.mlProbabilities = {
+      patientState.mlProbabilities = {
         logistic: prediction.logistic_prob,
         rf: prediction.rf_prob,
         final: prediction.final_prob
       };
 
-      state.riskScore = Math.min(100, Math.max(0, prediction.final_prob * 100));
+      patientState.riskScore = Math.min(100, Math.max(0, prediction.final_prob * 100));
 
       if (prediction.final_pred === 1 || prediction.final_prob >= 0.55) {
-        state.riskLevel = 'CRITICAL';
+        patientState.riskLevel = 'CRITICAL';
       } else if (prediction.final_prob >= 0.3) {
-        state.riskLevel = 'BORDERLINE';
+        patientState.riskLevel = 'BORDERLINE';
       } else {
-        state.riskLevel = 'STABLE';
+        patientState.riskLevel = 'STABLE';
       }
 
-      updateProbabilityDisplay();
+      patientState.lastPredictionAt = Date.now();
+      patientState.predictionStatus = 'available';
+      updateSidebarPatientSnapshot(patientState);
+
+      if (patientId === state.activePatientId) {
+        copyPatientStateToView(patientId);
+        updateProbabilityDisplay();
+        updateUI();
+      }
       return true;
     } else {
       console.error('Prediction failed:', result.error);
-      fallbackRiskCalculation();
+      patientState.predictionStatus = 'unavailable';
       return false;
     }
   } catch (error) {
     console.error('Error fetching prediction:', error);
-    fallbackRiskCalculation();
+    patientState.predictionStatus = 'unavailable';
     return false;
   }
 }
 
-function fallbackRiskCalculation() {
-  const v = state.vitals;
-  const l = state.labs;
+function fallbackRiskCalculation(patientState = getActivePatientState()) {
+  if (!patientState) return;
+  const v = patientState.vitals;
+  const l = patientState.labs;
   let score = 0;
 
   if (v.heartRate < 50 || v.heartRate > 130) score += 25;
@@ -471,8 +628,12 @@ function fallbackRiskCalculation() {
   else if (l.lactate > 2) score += 15;
   if (l.creatinine > 2) score += 20;
 
-  state.riskScore = Math.min(100, score);
-  state.riskLevel = score >= 55 ? 'CRITICAL' : score >= 30 ? 'BORDERLINE' : 'STABLE';
+  patientState.riskScore = Math.min(100, score);
+  patientState.riskLevel = riskLevelFromScore(patientState.riskScore);
+  updateSidebarPatientSnapshot(patientState);
+  if (patientState.id === state.activePatientId) {
+    copyPatientStateToView(patientState.id);
+  }
 }
 
 function updateProbabilityDisplay() {
@@ -492,7 +653,7 @@ function init() {
   checkViewport();
 
   // Initialize original features
-  initializeHistory();
+  initializePatientStates();
   calculateWaveformParameters();
   renderPatientList();
   renderMedications();
@@ -508,10 +669,10 @@ function init() {
   checkBackendConnection().then(connected => {
     if (connected) {
       console.log('Backend connected successfully');
-      getMLPrediction();
+      startPredictionScheduler();
     } else {
       console.warn('Using fallback risk calculation');
-      fallbackRiskCalculation();
+      Object.values(patientStates).forEach(fallbackRiskCalculation);
     }
     startSimulation();
   });
@@ -520,26 +681,26 @@ function init() {
   setInterval(updateClock, 1000);
 }
 
-function initializeHistory() {
+function initializeHistory(patientState = state) {
   const now = Date.now();
   for (let i = 60; i >= 0; i--) {
-    state.vitalHistory.push({
+    patientState.vitalHistory.push({
       time: now - i * 60000,
-      hr: 75 + Math.random() * 15,
-      spo2: 95 + Math.random() * 4,
-      sbp: 115 + Math.random() * 20,
-      rr: 14 + Math.random() * 6,
-      temp: 36.8 + Math.random() * 0.8,
-      cvp: 6 + Math.random() * 4,
-      papSystolic: 22 + Math.random() * 6,
-      papDiastolic: 8 + Math.random() * 4,
-      icp: 10 + Math.random() * 6,
-      co2: 35 + Math.random() * 8
+      hr: patientState.vitals.heartRate + (Math.random() - 0.5) * 8,
+      spo2: patientState.vitals.spO2 + (Math.random() - 0.5) * 2,
+      sbp: patientState.vitals.systolicBP + (Math.random() - 0.5) * 10,
+      rr: patientState.vitals.respiratoryRate + (Math.random() - 0.5) * 4,
+      temp: patientState.vitals.temperature + (Math.random() - 0.5) * 0.5,
+      cvp: patientState.vitals.cvp + (Math.random() - 0.5) * 2,
+      papSystolic: patientState.vitals.papSystolic + (Math.random() - 0.5) * 4,
+      papDiastolic: patientState.vitals.papDiastolic + (Math.random() - 0.5) * 2,
+      icp: patientState.vitals.icp + (Math.random() - 0.5) * 2,
+      co2: patientState.vitals.co2 + (Math.random() - 0.5) * 4
     });
   }
 
-  const baseRisk = state.riskScore;
-  state.trajectory = Array.from({ length: 12 }, (_, i) => {
+  const baseRisk = patientState.riskScore;
+  patientState.trajectory = Array.from({ length: 12 }, (_, i) => {
     const trend = (Math.random() - 0.5) * 10;
     return Math.max(0, Math.min(100, baseRisk + trend * (i / 12)));
   });
@@ -989,35 +1150,69 @@ function drawGrid(ctx, w, h) {
 
 // ========== SIMULATION (UPDATED WITH PHASE-BASED CYCLE) ==========
 function startSimulation() {
-  setInterval(() => {
+  if (simulationTimerId) return;
+  simulationTimerId = setInterval(() => {
     if (!state.isLive) return;
-    updateVitals();
+    Object.values(patientStates).forEach(updateVitals);
+    copyPatientStateToView(state.activePatientId);
     calculateWaveformParameters();
-    getMLPrediction();   // <-- yeh backend ML se real prediction leta hai, isko waise hi rehne do
     updateUI();
     checkAlerts();
+    renderPatientList();
   }, 2000); // 2-second tick for smooth transitions
 }
 
-// REPLACED updateVitals with phase-based version
-function updateVitals() {
-  advancePhaseIfNeeded();
-  const v = state.vitals;
-  const range = phaseRanges[state.simPhase];
+function startPredictionScheduler() {
+  if (predictionSchedulerRunning) return;
+  predictionSchedulerRunning = true;
+  runPredictionScheduler();
+}
 
-  v.heartRate       = clamp(stepToward(v.heartRate, range.heartRate, 0.3, 1.5), 40, 180);
-  v.spO2            = clamp(stepToward(v.spO2, range.spO2, 0.3, 0.6), 70, 100);
-  v.respiratoryRate = clamp(stepToward(v.respiratoryRate, range.respiratoryRate, 0.3, 0.8), 6, 40);
-  v.systolicBP      = clamp(stepToward(v.systolicBP, range.systolicBP, 0.3, 2), 60, 220);
-  v.diastolicBP     = clamp(stepToward(v.diastolicBP, range.diastolicBP, 0.3, 1.5), 40, 140);
-  v.temperature     = clamp(stepToward(v.temperature, range.temperature, 0.25, 0.05), 34, 42);
-  v.cvp             = clamp(stepToward(v.cvp, range.cvp, 0.3, 0.3), 2, 20);
-  v.papSystolic     = clamp(stepToward(v.papSystolic, range.papSystolic, 0.3, 1), 15, 50);
-  v.papDiastolic    = clamp(stepToward(v.papDiastolic, range.papDiastolic, 0.3, 0.5), 5, 25);
-  v.icp             = clamp(stepToward(v.icp, range.icp, 0.3, 0.3), 5, 30);
-  v.co2             = clamp(stepToward(v.co2, range.co2, 0.3, 1), 20, 60);
+async function runPredictionScheduler() {
+  while (predictionSchedulerRunning) {
+    if (!state.isLive || patients.length === 0) {
+      await sleep(1000);
+      continue;
+    }
 
-  state.vitalHistory.push({
+    const patient = patients[nextPredictionIndex % patients.length];
+    nextPredictionIndex = (nextPredictionIndex + 1) % patients.length;
+    await getMLPrediction(patient.id);
+    await sleep(1000);
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function updateVitals(patientState = getActivePatientState()) {
+  if (!patientState) return;
+  const elapsedSeconds = Math.max(1, (Date.now() - patientState.lastUpdated) / 1000);
+  patientState.lastUpdated = Date.now();
+  advancePhaseIfNeeded(patientState);
+  const v = patientState.vitals;
+  const range = phaseRanges[patientState.simPhase];
+  const stepScale = Math.min(2, elapsedSeconds / 2);
+
+  v.heartRate       = clamp(stepToward(v.heartRate, range.heartRate, 0.12 * stepScale, 0.8), 40, 180);
+  v.spO2            = clamp(stepToward(v.spO2, range.spO2, 0.10 * stepScale, 0.3), 70, 100);
+  v.respiratoryRate = clamp(stepToward(v.respiratoryRate, range.respiratoryRate, 0.12 * stepScale, 0.4), 6, 40);
+  v.systolicBP      = clamp(stepToward(v.systolicBP, range.systolicBP, 0.10 * stepScale, 1.2), 60, 220);
+  v.diastolicBP     = clamp(stepToward(v.diastolicBP, range.diastolicBP, 0.10 * stepScale, 0.8), 40, 140);
+  v.temperature     = clamp(stepToward(v.temperature, range.temperature, 0.08 * stepScale, 0.03), 34, 42);
+  v.cvp             = clamp(stepToward(v.cvp, range.cvp, 0.10 * stepScale, 0.15), 2, 20);
+  v.papSystolic     = clamp(stepToward(v.papSystolic, range.papSystolic, 0.10 * stepScale, 0.5), 15, 50);
+  v.papDiastolic    = clamp(stepToward(v.papDiastolic, range.papDiastolic, 0.10 * stepScale, 0.25), 5, 25);
+  v.icp             = clamp(stepToward(v.icp, range.icp, 0.10 * stepScale, 0.15), 5, 30);
+  v.co2             = clamp(stepToward(v.co2, range.co2, 0.10 * stepScale, 0.5), 20, 60);
+
+  patientState.additionalParams.sepsis_risk_score = patientState.simPhase === 'high' ? 8 : patientState.simPhase === 'moderate' ? 4 : 1;
+  patientState.additionalParams.nurse_alert = patientState.simPhase === 'high' ? 1 : 0;
+  patientState.additionalParams.oxygen_flow = patientState.simPhase === 'high' ? 8 : patientState.simPhase === 'moderate' ? 4 : 2;
+  patientState.additionalParams.oxygen_device = patientState.simPhase === 'high' ? 'ventilator' : 'nasal_cannula';
+
+  patientState.vitalHistory.push({
     time: Date.now(),
     hr: v.heartRate, 
     spo2: v.spO2, 
@@ -1030,7 +1225,11 @@ function updateVitals() {
     icp: v.icp, 
     co2: v.co2
   });
-  if (state.vitalHistory.length > 120) state.vitalHistory.shift();
+  if (patientState.vitalHistory.length > 120) patientState.vitalHistory.shift();
+
+  patientState.trajectory.push(patientState.riskScore);
+  if (patientState.trajectory.length > 12) patientState.trajectory.shift();
+  updateSidebarPatientSnapshot(patientState);
 }
 
 function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
@@ -1458,7 +1657,9 @@ function toggleLive() {
 }
 
 function loadCriticalExample() {
-  state.vitals = {
+  const patientState = getActivePatientState();
+  if (!patientState) return;
+  patientState.vitals = {
     heartRate: 160,
     spO2: 78,
     systolicBP: 82,
@@ -1471,7 +1672,7 @@ function loadCriticalExample() {
     icp: 24,
     co2: 58
   };
-  state.labs = {
+  patientState.labs = {
     lactate: 4.5,
     creatinine: 2.4,
     wbc: 21.0,
@@ -1480,7 +1681,7 @@ function loadCriticalExample() {
     potassium: 5.2,
     crp: 27
   };
-  state.additionalParams = {
+  patientState.additionalParams = {
     mobility_score: 0,
     nurse_alert: 1,
     sepsis_risk_score: 8,
@@ -1493,7 +1694,13 @@ function loadCriticalExample() {
     oxygen_flow: 14,
     crp_level: 27
   };
+  patientState.riskScore = 75;
+  patientState.riskLevel = 'CRITICAL';
+  patientState.simPhase = 'high';
+  patientState.phaseIndex = phaseOrder.indexOf('high');
+  patientState.phaseEndTime = Date.now() + randomDuration();
   state.alertDismissed = false;
+  copyPatientStateToView(patientState.id);
 
   document.getElementById('lactateValue').textContent = state.labs.lactate;
   document.getElementById('creatinineValue').textContent = state.labs.creatinine;
@@ -1534,8 +1741,9 @@ function loadCriticalExample() {
   document.getElementById('inputAdmissionType').value = state.additionalParams.admission_type;
 
   calculateWaveformParameters();
-  getMLPrediction();
+  getMLPrediction(patientState.id);
   updateUI();
+  renderPatientList();
 }
 
 function switchTab(tab) {
@@ -1548,30 +1756,33 @@ function switchTab(tab) {
 }
 
 function applyManualInputs() {
-  state.vitals.heartRate = parseFloat(document.getElementById('inputHR').value);
-  state.vitals.spO2 = parseFloat(document.getElementById('inputSpO2').value);
-  state.vitals.systolicBP = parseFloat(document.getElementById('inputSBP').value);
-  state.vitals.diastolicBP = parseFloat(document.getElementById('inputDBP').value);
-  state.vitals.temperature = parseFloat(document.getElementById('inputTemp').value);
-  state.vitals.respiratoryRate = parseFloat(document.getElementById('inputRR').value);
+  const patientState = getActivePatientState();
+  if (!patientState) return;
+  patientState.vitals.heartRate = parseFloat(document.getElementById('inputHR').value);
+  patientState.vitals.spO2 = parseFloat(document.getElementById('inputSpO2').value);
+  patientState.vitals.systolicBP = parseFloat(document.getElementById('inputSBP').value);
+  patientState.vitals.diastolicBP = parseFloat(document.getElementById('inputDBP').value);
+  patientState.vitals.temperature = parseFloat(document.getElementById('inputTemp').value);
+  patientState.vitals.respiratoryRate = parseFloat(document.getElementById('inputRR').value);
 
-  state.labs.lactate = parseFloat(document.getElementById('inputLactate').value);
-  state.labs.creatinine = parseFloat(document.getElementById('inputCreatinine').value);
-  state.labs.wbc = parseFloat(document.getElementById('inputWBC').value);
-  state.labs.hemoglobin = parseFloat(document.getElementById('inputHGB').value);
-  state.labs.crp = parseFloat(document.getElementById('inputCRP').value);
+  patientState.labs.lactate = parseFloat(document.getElementById('inputLactate').value);
+  patientState.labs.creatinine = parseFloat(document.getElementById('inputCreatinine').value);
+  patientState.labs.wbc = parseFloat(document.getElementById('inputWBC').value);
+  patientState.labs.hemoglobin = parseFloat(document.getElementById('inputHGB').value);
+  patientState.labs.crp = parseFloat(document.getElementById('inputCRP').value);
 
-  state.additionalParams.mobility_score = parseInt(document.getElementById('inputMobility').value);
-  state.additionalParams.nurse_alert = parseInt(document.getElementById('inputNurseAlert').value);
-  state.additionalParams.sepsis_risk_score = parseInt(document.getElementById('inputSepsisRisk').value);
-  state.additionalParams.age = parseInt(document.getElementById('inputAge').value);
-  state.additionalParams.comorbidity_index = parseInt(document.getElementById('inputComorbidity').value);
-  state.additionalParams.hour_from_admission = parseInt(document.getElementById('inputHours').value);
-  state.additionalParams.gender = document.getElementById('inputGender').value;
-  state.additionalParams.admission_type = document.getElementById('inputAdmissionType').value;
-  state.additionalParams.oxygen_flow = parseFloat(document.getElementById('inputO2Flow').value);
-  state.additionalParams.oxygen_device = document.getElementById('inputO2Device').value;
-  state.additionalParams.crp_level = parseFloat(document.getElementById('inputCRP').value);
+  patientState.additionalParams.mobility_score = parseInt(document.getElementById('inputMobility').value);
+  patientState.additionalParams.nurse_alert = parseInt(document.getElementById('inputNurseAlert').value);
+  patientState.additionalParams.sepsis_risk_score = parseInt(document.getElementById('inputSepsisRisk').value);
+  patientState.additionalParams.age = parseInt(document.getElementById('inputAge').value);
+  patientState.additionalParams.comorbidity_index = parseInt(document.getElementById('inputComorbidity').value);
+  patientState.additionalParams.hour_from_admission = parseInt(document.getElementById('inputHours').value);
+  patientState.additionalParams.gender = document.getElementById('inputGender').value;
+  patientState.additionalParams.admission_type = document.getElementById('inputAdmissionType').value;
+  patientState.additionalParams.oxygen_flow = parseFloat(document.getElementById('inputO2Flow').value);
+  patientState.additionalParams.oxygen_device = document.getElementById('inputO2Device').value;
+  patientState.additionalParams.crp_level = parseFloat(document.getElementById('inputCRP').value);
+  copyPatientStateToView(patientState.id);
 
   document.getElementById('lactateValue').textContent = state.labs.lactate;
   document.getElementById('creatinineValue').textContent = state.labs.creatinine;
@@ -1583,7 +1794,7 @@ function applyManualInputs() {
     `${state.additionalParams.oxygen_device.replace('_', ' ')} @ ${state.additionalParams.oxygen_flow}L/min`;
 
   calculateWaveformParameters();
-  getMLPrediction();
+  getMLPrediction(patientState.id);
   updateUI();
 }
 
@@ -1593,7 +1804,11 @@ function toggleVent() {
   grid.style.opacity = enabled ? '1' : '0.5';
   grid.style.pointerEvents = enabled ? 'auto' : 'none';
   document.getElementById('oxygenDevice').textContent = enabled ? 'Ventilator' : 'Nasal Cannula @ 2L/min';
-  state.additionalParams.oxygen_device = enabled ? 'ventilator' : 'nasal_cannula';
+  const patientState = getActivePatientState();
+  if (patientState) {
+    patientState.additionalParams.oxygen_device = enabled ? 'ventilator' : 'nasal_cannula';
+    state.additionalParams.oxygen_device = patientState.additionalParams.oxygen_device;
+  }
 }
 
 function addNote() {
@@ -1648,27 +1863,22 @@ function renderPatientList() {
 }
 
 function selectPatient(id) {
-  state.activePatientId = id;
   const patient = patients.find(p => p.id === id);
-  if (patient) {
+  const patientState = patientStates[id];
+  if (patient && patientState) {
+    copyPatientStateToView(id);
     document.getElementById('patientId').textContent = patient.id;
     document.getElementById('patientDetails').textContent = `${patient.age}y ${patient.gender} • Emergency`;
     document.getElementById('patientBed').textContent = patient.bed;
 
-    state.vitals.heartRate = patient.hr;
-    state.vitals.spO2 = patient.spo2;
-    state.riskScore = patient.risk;
-    state.riskLevel = patient.level;
     state.alertDismissed = false;
-    state.additionalParams.age = patient.age;
-    state.additionalParams.gender = patient.gender;
 
-    document.getElementById('inputAge').value = patient.age;
-    document.getElementById('inputGender').value = patient.gender;
+    document.getElementById('inputAge').value = patientState.additionalParams.age;
+    document.getElementById('inputGender').value = patientState.additionalParams.gender;
 
     calculateWaveformParameters();
-    getMLPrediction();
     updateUI();
+    updateProbabilityDisplay();
   }
   renderPatientList();
 }
