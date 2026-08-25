@@ -1,0 +1,21 @@
+services:
+  ml-service:
+    build:
+      context: .
+      dockerfile: ml_service/Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      ML_SERVICE_PORT: 5001
+
+  spring-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "7860:7860"
+    environment:
+      SERVER_PORT: 7860
+      ML_SERVICE_URL: http://ml-service:5001
+    depends_on:
+      - ml-service
